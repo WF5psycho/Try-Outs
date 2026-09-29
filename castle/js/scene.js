@@ -326,7 +326,7 @@ function buildScene() {
       beam([tx, yt + 0.4, zr + side * 0.14], strutTop, 0.18, 0.18, M.BEAM, [1, 0, 0]);                  // strut
       const zwp = side < 0 ? GH.z0 + 0.14 : GH.z1 - 0.14;
       box(tx - 0.14, 5.1, zwp - 0.14, tx + 0.14, yt, zwp + 0.14, M.BEAM, { seed: tx * 3 + side });        // wall post
-      box(tx - 0.24, 4.78, side < 0 ? GH.z0 : GH.z1 - 0.42, tx + 0.24, 5.1, side < 0 ? GH.z0 + 0.42 : GH.z1, M.STONE_TRIM); // corbel
+      box(tx - 0.24, 4.78, side < 0 ? GH.z0 : GH.z1 - 0.42, tx + 0.24, 5.1, side < 0 ? GH.z0 + 0.42 : GH.z1, M.BEAM, { seed: tx * 7 + side }); // timber corbel
       beam([tx, 5.55, zwp - side * 0.1], [tx, yt + 0.02, zwp - side * 1.55], 0.2, 0.2, M.BEAM, [1, 0, 0]); // arched brace (straight)
     }
   }
@@ -572,7 +572,12 @@ function buildScene() {
       }
     }
   }
-  function rug(x0, z0, x1, z1, variant) { box(x0, 0, z0, x1, 0.012, z1, M.RUG, { x: variant, collide: true }); }
+  function rug(x0, z0, x1, z1, variant) {
+    box(x0, 0, z0, x1, 0.012, z1, M.RUG, { x: variant, collide: true });
+    // knotted fringe on the short ends
+    if (Math.abs(x1 - x0) < Math.abs(z1 - z0)) { box(x0 + 0.02, 0, z0 - 0.07, x1 - 0.02, 0.006, z0, M.LINEN, { col: '#cbbd9e', x: 0 }); box(x0 + 0.02, 0, z1, x1 - 0.02, 0.006, z1 + 0.07, M.LINEN, { col: '#cbbd9e' }); }
+    else { box(x0 - 0.07, 0, z0 + 0.02, x0, 0.006, z1 - 0.02, M.LINEN, { col: '#cbbd9e' }); box(x1, 0, z0 + 0.02, x1 + 0.07, 0.006, z1 - 0.02, M.LINEN, { col: '#cbbd9e' }); }
+  }
 
   // ================================================================ GREAT HALL
   // fireplace on west wall
@@ -580,6 +585,11 @@ function buildScene() {
   box(-15, 0, -4.0, -14.0, 1.95, -2.6, M.STONE_TRIM, { seed: 12 });
   box(-15, 1.95, -7.7, -14.0, 7.7, -2.6, M.STONE);
   box(-14.02, 1.95, -6.6, -13.9, 2.5, -3.7, M.STONE_TRIM, { seed: 13 });   // lintel
+  for (const zc of [-6.45, -3.85]) {
+    post(-13.9, 0.0, zc, 0.13, 0.2, M.STONE_TRIM, { seed: zc });
+    post(-13.9, 0.2, zc, 0.09, 1.6, M.STONE_TRIM, { seed: zc + 1 });
+    post(-13.9, 1.8, zc, 0.13, 0.15, M.STONE_TRIM, { seed: zc + 2 });
+  }
   box(-14.0, 2.5, -7.85, -13.72, 2.66, -2.45, M.BEAM);                     // oak mantel shelf
   box(-15, 0, -6.3, -14.93, 1.95, -4.0, M.SOOT);
   box(-15, 0, -6.3, -14.0, 1.95, -6.24, M.SOOT);
@@ -673,17 +683,24 @@ function buildScene() {
     }
   }
   // sideboard on south wall + paintings + lamps
-  box(-7.0, 0.1, -0.85, -2.3, 0.92, -0.3, M.WOOD, { col: '#4a2c17' });
-  box(-7.05, 0.92, -0.88, -2.25, 0.96, -0.3, M.WOOD, { col: '#40250f' });
-  for (let i = 0; i < 4; i++) {
-    const x0 = -6.95 + i * 1.175;
-    box(x0 + 0.04, 0.17, -0.87, x0 + 1.1, 0.86, -0.85, M.WOOD, { col: '#553520' });
-    ell(x0 + 0.57, 0.62, -0.88, 0.015, 0.015, 0.015, M.BRASS);
+  for (const [xa, xb] of [[-7.0, -5.3], [-4.0, -2.3]]) {
+    box(xa, 0.12, -0.85, xb, 0.92, -0.3, M.WOOD, { col: '#4a2c17' });
+    box(xa - 0.05, 0.92, -0.88, xb + 0.05, 0.97, -0.3, M.WOOD, { col: '#40250f' });
+    box(xa - 0.02, 0.1, -0.87, xb + 0.02, 0.14, -0.3, M.WOOD, { col: '#3a2412' });
+    for (let i = 0; i < 2; i++) {
+      const x0 = xa + 0.06 + i * (xb - xa - 0.12) / 2, x1 = x0 + (xb - xa - 0.12) / 2 - 0.04;
+      box(x0, 0.2, -0.87, x1, 0.84, -0.85, M.WOOD, { col: '#553520' });
+      box(x0 + 0.08, 0.28, -0.88, x1 - 0.08, 0.76, -0.87, M.WOOD, { col: '#4a2c17' });
+      ell(i ? x0 + 0.08 : x1 - 0.08, 0.55, -0.89, 0.015, 0.015, 0.015, M.BRASS);
+    }
+    for (const x of [xa + 0.06, xb - 0.06]) for (const z of [-0.8, -0.36]) post(x, 0, z, 0.035, 0.12, M.WOOD, { col: '#3a2412' });
   }
-  for (const x of [-6.9, -2.4]) for (const z of [-0.8, -0.35]) post(x, 0, z, 0.03, 0.1, M.WOOD, { col: '#3a2412' });
-  tableLamp(-6.4, 0.96, -0.58, 0.06);
-  tableLamp(-2.9, 0.96, -0.58, 0.06);
-  post(-4.65, 0.96, -0.55, 0.18, 0.012, M.PEWTER);
+  post(-4.65, 0, -0.55, 0.3, 0.02, M.WOOD, { col: '#3a2412' });
+  box(-4.95, 0.0, -0.75, -4.35, 0.5, -0.35, M.PLAIN, { col: '#6b5436', x: 0.95 });
+  tableLamp(-6.6, 0.97, -0.58, 0.06);
+  tableLamp(-2.7, 0.97, -0.58, 0.06);
+  post(-6.0, 0.97, -0.55, 0.16, 0.012, M.PEWTER);
+  candlestick(-3.4, 0.97, -0.6, 0.28);
   painting(-4.65, 2.75, -0.3, 2.6, 1.7, 180, 0);
   painting(-12.9, 3.0, -0.3, 3.4, 2.5, 180, 4);
   rod([-14.8, 4.35, -0.38], [-11.0, 4.35, -0.38], 0.02, M.IRON);
@@ -1064,11 +1081,11 @@ function buildScene() {
   }
   // linen armchair + side table + reading lamp by the fire
   push([8.7, 0, 2.2], 150);
-  rbox(0, 0.25, 0, 0.42, 0.18, 0.4, 0.08, M.LINEN, { col: '#cbbfa6' });
-  rbox(0, 0.47, 0.06, 0.32, 0.07, 0.32, 0.06, M.LINEN, { col: '#d3c8b1' });
-  rbox(0, 0.72, -0.32, 0.4, 0.34, 0.1, 0.1, M.LINEN, { col: '#cbbfa6' });
-  rbox(-0.35, 0.53, 0.0, 0.08, 0.14, 0.4, 0.08, M.LINEN, { col: '#cbbfa6' });
-  rbox(0.35, 0.53, 0.0, 0.08, 0.14, 0.4, 0.08, M.LINEN, { col: '#cbbfa6' });
+  rbox(0, 0.25, 0, 0.42, 0.18, 0.4, 0.08, M.LINEN, { col: '#b6a386' });
+  rbox(0, 0.47, 0.06, 0.32, 0.07, 0.32, 0.06, M.LINEN, { col: '#bfae90' });
+  rbox(0, 0.72, -0.32, 0.4, 0.34, 0.1, 0.1, M.LINEN, { col: '#b6a386' });
+  rbox(-0.35, 0.53, 0.0, 0.08, 0.14, 0.4, 0.08, M.LINEN, { col: '#b6a386' });
+  rbox(0.35, 0.53, 0.0, 0.08, 0.14, 0.4, 0.08, M.LINEN, { col: '#b6a386' });
   rbox(0.05, 0.58, -0.12, 0.22, 0.14, 0.05, 0.06, M.WOOL, { col: '#7c4b3a', rot: [-20, 0, 0] });
   for (const sx of [-1, 1]) for (const sz of [-1, 1]) post(sx * 0.35, 0, sz * 0.33, 0.022, 0.08, M.WOOD, { col: '#3b1d0c' });
   pop();
@@ -1077,10 +1094,10 @@ function buildScene() {
   post(7.75, 0.64, 1.45, 0.05, 0.1, M.CERAMIC, { col: '#f0ece2' });
   // linen sofa + ottoman facing the bedroom fire
   push([10.65, 0, 3.05], 180);
-  rbox(0, 0.22, 0, 0.98, 0.16, 0.44, 0.07, M.LINEN, { col: '#cfc6b2' });
-  rbox(0, 0.62, -0.34, 0.96, 0.28, 0.12, 0.1, M.LINEN, { col: '#cfc6b2', rot: [-8, 0, 0] });
-  for (const sx of [-1, 1]) rbox(sx * 0.88, 0.5, 0.0, 0.12, 0.2, 0.44, 0.1, M.LINEN, { col: '#cfc6b2' });
-  for (const sx of [-1, 1]) rbox(sx * 0.38, 0.44, 0.07, 0.37, 0.08, 0.34, 0.07, M.LINEN, { col: '#d6cdb9' });
+  rbox(0, 0.22, 0, 0.98, 0.16, 0.44, 0.07, M.LINEN, { col: '#a99a80' });
+  rbox(0, 0.62, -0.34, 0.96, 0.28, 0.12, 0.1, M.LINEN, { col: '#a99a80', rot: [-8, 0, 0] });
+  for (const sx of [-1, 1]) rbox(sx * 0.88, 0.5, 0.0, 0.12, 0.2, 0.44, 0.1, M.LINEN, { col: '#a99a80' });
+  for (const sx of [-1, 1]) rbox(sx * 0.38, 0.44, 0.07, 0.37, 0.08, 0.34, 0.07, M.LINEN, { col: '#b3a589' });
   rbox(-0.5, 0.64, -0.2, 0.2, 0.17, 0.06, 0.06, M.WOOL, { col: '#6d7d86', x: 1, rot: [-15, 12, 0] });
   rbox(0.55, 0.64, -0.2, 0.2, 0.17, 0.06, 0.06, M.LINEN, { col: '#8c6f55', rot: [-15, -10, 0] });
   for (const sx of [-1, 1]) for (const sz of [-1, 1]) post(sx * 0.9, 0, sz * 0.36, 0.025, 0.07, M.WOOD, { col: '#3b1d0c' });
@@ -1135,12 +1152,13 @@ function buildScene() {
   function tree(x, z, s) {
     const r = mulberry32(Math.floor(x * 100 + z * 7 + 999));
     const top = 3.6 * s;
-    rod([x, -0.6, z], [x + 0.2 * s, top, z - 0.1 * s], 0.32 * s, M.PLAIN, { col: '#3b3128', x: 0.95 });
+    rod([x, -0.6, z], [x + 0.2 * s, top, z - 0.1 * s], 0.32 * s, M.LOG, { seed: x });
+    ell(x, -0.45, z, 0.5 * s, 0.25 * s, 0.5 * s, M.LOG, { seed: z });
     const blobs = 16;
     for (let i = 0; i < blobs; i++) {
       const a = r() * 6.28, d = (0.4 + r() * 2.8) * s, hgt = top + (0.6 + r() * 4.6) * s;
       const cx = x + Math.cos(a) * d, cz = z + Math.sin(a) * d;
-      rod([x + 0.2 * s, top - 0.3 * s, z - 0.1 * s], [cx, hgt - 0.4 * s, cz], (0.07 + 0.08 * r()) * s, M.PLAIN, { col: '#3b3128', x: 0.95 });
+      rod([x + 0.2 * s, top - 0.3 * s, z - 0.1 * s], [cx, hgt - 0.4 * s, cz], (0.07 + 0.08 * r()) * s, M.LOG, { seed: i });
       const rr = (1.3 + r() * 1.1) * s;
       ell(cx, hgt, cz, rr, rr * (0.75 + r() * 0.3), rr, M.HEDGE, { x: 1, flags: F.POROUS | F.TRANS });
     }
@@ -1165,7 +1183,7 @@ function buildScene() {
       }
     }
   }
-  tree(-26, -20, 1.2); tree(30, -26, 1.4); tree(-44, 24, 1.5); tree(46, 30, 1.3); tree(-52, -4, 1.6); tree(52, 6, 1.4);
+  tree(-14, -36, 1.2); tree(30, -26, 1.4); tree(-44, 24, 1.5); tree(46, 30, 1.3); tree(-52, -4, 1.6); tree(52, 6, 1.4);
   tree(-34, 10, 1.3); tree(-38, -12, 1.5); tree(36, 18, 1.4); tree(40, -6, 1.2); tree(-30, 42, 1.4); tree(34, 46, 1.6);
   tree(-22, -34, 1.3); tree(18, -38, 1.5);
 

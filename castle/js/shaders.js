@@ -463,7 +463,7 @@ float woodTone(vec3 g, float seed, out float late){
   late = smoothstep(0.45, 0.85, f)*smoothstep(1.0, 0.9, f);
   float streak = vnoise3(g*vec3(1.5, 40.0, 40.0) + seed)*0.6;
   float pores = vnoise3(g*vec3(12.0, 400.0, 400.0));
-  return 1.0 - 0.28*late - 0.12*streak - 0.06*pores*late;
+  return 1.0 - 0.13*late - 0.1*streak - 0.05*pores*late;
 }
 
 // generic irregular block pattern (stone courses, flagstones)
@@ -535,40 +535,61 @@ vec3 books(vec3 p, vec3 n, vec3 hs, float seed, out float metal, out float rough
 }
 
 vec3 rugPattern(vec2 p, vec2 hs, float variant){
-  // p in metres from centre
+  // Persian / Heriz-style: guard stripes, rosette border, floral field, lobed central medallion, corner spandrels
+  vec3 red = vec3(0.3, 0.07, 0.045), indigo = vec3(0.04, 0.055, 0.12), ivory = vec3(0.52, 0.45, 0.33), gold = vec3(0.4, 0.28, 0.12), rust = vec3(0.36, 0.14, 0.06);
+  if (variant > 3.5){ red = vec3(0.36, 0.28, 0.2); indigo = vec3(0.08, 0.1, 0.15); rust = vec3(0.3, 0.2, 0.14); }
+  else if (variant > 2.5){ red = vec3(0.22, 0.06, 0.04); indigo = vec3(0.05, 0.07, 0.13); }
+  else if (variant > 1.5){ vec3 tt = red; red = indigo*1.3; indigo = tt*0.8; }
   vec2 d = hs - abs(p);
   float e = min(d.x, d.y);
-  vec3 ivory = vec3(0.52, 0.44, 0.32), red = vec3(0.26, 0.05, 0.03), indigo = vec3(0.035, 0.05, 0.11), gold = vec3(0.4, 0.27, 0.1), dark = vec3(0.05, 0.035, 0.03);
-  if (variant > 3.5){ red = vec3(0.34, 0.3, 0.24); indigo = vec3(0.07, 0.1, 0.16); gold = vec3(0.45, 0.38, 0.28); ivory = vec3(0.58, 0.52, 0.42); }
-  else if (variant > 2.5){ red = vec3(0.18, 0.05, 0.035); }
-  else if (variant > 1.5){ red = vec3(0.12, 0.13, 0.2); indigo = vec3(0.2, 0.04, 0.03); }
+  float bw = min(0.36, min(hs.x, hs.y)*0.28);
   vec3 c;
-  if (e < 0.05) c = dark;
-  else if (e < 0.08) c = ivory;
-  else if (e < 0.32){
-    float t = (e - 0.08)/0.24;
-    vec2 q = (abs(p.x) > abs(p.y) - (hs.y - hs.x)) ? vec2(p.y, e) : vec2(p.x, e);
-    float m = abs(fract(q.x*3.2) - 0.5)*2.0;
-    float motif = step(abs(m - (t - 0.5)*1.4), 0.25);
-    c = mix(indigo, gold, motif*0.8);
-    if (t < 0.08 || t > 0.92) c = red;
-  } else if (e < 0.37) c = ivory*0.85;
+  if (e < 0.03) c = indigo*0.7;
+  else if (e < 0.05) c = ivory*0.8;
+  else if (e < bw){
+    // main border: rosettes along the edge on an indigo ground with a meandering vine
+    float along = d.x < d.y ? p.y : p.x;
+    float t = (e - 0.05)/(bw - 0.05);
+    vec2 q = vec2(fract(along/0.22) - 0.5, t - 0.5);
+    float ros = smoothstep(0.26, 0.2, length(q*vec2(1.0, 0.9)));
+    float petal = step(0.5, fract(atan(q.y, q.x)*1.27 + 0.5))*ros;
+    c = indigo;
+    float vine = smoothstep(0.06, 0.02, abs(q.y - 0.3*sin(along*28.0)));
+    c = mix(c, gold, vine*0.7);
+    c = mix(c, red, ros);
+    c = mix(c, ivory, petal*0.7);
+    if (t < 0.06 || t > 0.94) c = rust;
+  } else if (e < bw + 0.04) c = ivory*0.75;
   else {
-    vec2 q = p*2.2;
-    vec2 g = fract(q) - 0.5;
-    float dm = abs(g.x) + abs(g.y);
+    vec2 f = p/(hs - bw);
+    float med = length(f*vec2(1.0, 1.35));
+    float ang = atan(f.y, f.x);
+    float lobe = 0.42 + 0.05*cos(ang*8.0);
+    // field: dense floral lattice
+    vec2 g = fract(p*3.3) - 0.5;
+    float fl = smoothstep(0.2, 0.12, length(g));
+    float lat = smoothstep(0.04, 0.0, abs(abs(g.x) + abs(g.y) - 0.45));
     c = red;
-    c = mix(c, indigo, step(dm, 0.32)*step(0.2, dm));
-    c = mix(c, gold, step(dm, 0.1));
-    float cm = abs(p.x)/hs.x*0.8 + abs(p.y)/hs.y*1.2;
-    float med = step(cm, 0.45);
-    c = mix(c, mix(indigo, ivory*0.7, step(abs(fract(cm*7.0) - 0.5), 0.12)), med);
+    c = mix(c, indigo, lat*0.8);
+    c = mix(c, mix(ivory, gold, step(0.5, hash12(floor(p*3.3)))), fl*0.75);
+    // corner spandrels
+    float cs = length((abs(f) - 1.0)*vec2(1.0, 1.3));
+    if (cs < 0.45){ c = mix(indigo, ivory*0.7, smoothstep(0.05, 0.0, abs(cs - 0.3))); c = mix(c, red, smoothstep(0.12, 0.08, cs)); }
+    if (med < lobe){
+      c = mix(indigo, ivory*0.85, smoothstep(0.03, 0.0, abs(med - lobe + 0.05)));
+      c = mix(c, red, smoothstep(0.2, 0.17, med));
+      c = mix(c, gold, smoothstep(0.08, 0.05, med));
+      float star = step(0.5, fract(ang*8.0/6.2832 + med*3.0));
+      c = mix(c, c*0.75 + ivory*0.2, star*step(0.2, med)*0.4);
+    }
   }
-  c *= 0.8 + 0.35*vnoise2(p*3.0) + 0.1*vnoise2(p*90.0);
-  // sun-faded, worn antique wool: desaturate and lift towards a warm grey
-  float fade = 0.35 + 0.25*vnoise2(p*1.3);
-  c = mix(c, vec3(lum(c))*vec3(1.1, 1.0, 0.85), fade);
-  c = mix(c, vec3(0.3, 0.25, 0.2), 0.12);
+  // abrash (dye banding), wear and pile
+  c *= 0.85 + 0.3*vnoise2(vec2(p.x*0.8, p.y*6.0));
+  c *= 0.85 + 0.25*vnoise2(p*3.0) + 0.1*vnoise2(p*90.0);
+  float fade = 0.25 + 0.2*vnoise2(p*1.3);
+  c = mix(c, vec3(lum(c))*vec3(1.08, 1.0, 0.88), fade);
+  float worn = smoothstep(0.55, 0.8, fbm2(p*1.1 + 3.0));
+  c = mix(c, vec3(0.3, 0.25, 0.19), worn*0.35);
   return c;
 }
 
@@ -711,14 +732,14 @@ Mat getMat(int mid, vec3 wp, vec3 lp, vec3 ln, vec3 hs, vec4 prm, vec4 q, int ty
         float h1 = stoneHeight(wuv + vec2(e, 0), 0.0, rowH, 0.32, 0.85, 0.05, c2, d2);
         float h2 = stoneHeight(wuv + vec2(0, e), 0.0, rowH, 0.32, 0.85, 0.05, c2, d2);
         vec2 gr = vec2(h1 - h0, h2 - h0)/e;
-        vec3 bw = -(wtu*gr.x + wtv*gr.y)*0.035;
+        vec3 bw = -(wtu*gr.x + wtv*gr.y)*0.055;
         bump = qinv(q, bw);
       }
       float r1 = hash12(cell), r2 = hash12(cell + 7.7), r3 = hash12(cell + 3.3);
       vec3 st;
       if (inside){
-        st = mix(vec3(0.36, 0.29, 0.21), vec3(0.52, 0.44, 0.33), r1);
-        st = mix(st, vec3(0.4, 0.27, 0.16), step(0.82, r2)*0.7);
+        st = mix(vec3(0.35, 0.3, 0.23), vec3(0.5, 0.44, 0.35), r1);
+        st = mix(st, vec3(0.38, 0.3, 0.21), step(0.82, r2)*0.6);
         st = mix(st, vec3(0.3, 0.28, 0.25), step(0.88, r3)*0.6);
       } else {
         st = mix(vec3(0.3, 0.28, 0.24), vec3(0.47, 0.43, 0.37), r1);
@@ -751,6 +772,11 @@ Mat getMat(int mid, vec3 wp, vec3 lp, vec3 ln, vec3 hs, vec4 prm, vec4 q, int ty
         m.alb = mix(m.alb, vec3(0.55, 0.55, 0.45), lich*0.5);
         float streak = vnoise2(vec2(wuv.x*6.0, wuv.y*0.25));
         m.alb *= 0.8 + 0.25*streak;
+        // rain staining under the parapet and a damp band at the foot of the wall
+        float drip = smoothstep(0.55, 0.8, vnoise2(vec2(wuv.x*3.0, 0.0)))*smoothstep(6.0, 10.5, wp.y);
+        m.alb *= 1.0 - 0.35*drip*vnoise2(vec2(wuv.x*12.0, wuv.y*0.6));
+        m.alb *= mix(0.62, 1.0, smoothstep(-0.5, 1.4, wp.y + 0.6*vnoise2(wuv*1.5)));
+        m.alb = mix(m.alb, m.alb*vec3(0.8, 0.95, 0.7), smoothstep(1.2, -0.3, wp.y)*0.6);
         float moss = smoothstep(1.0, -0.4, wp.y)*smoothstep(0.4, 0.7, fbm2(wuv*3.0));
         m.alb = mix(m.alb, vec3(0.12, 0.15, 0.06), moss*0.7);
       }
@@ -818,7 +844,7 @@ Mat getMat(int mid, vec3 wp, vec3 lp, vec3 ln, vec3 hs, vec4 prm, vec4 q, int ty
       float h = hash12(id + 0.5);
       g = vec3(fp.x + off + h*50.0, fv*pw + h*7.0, 0.3 + h);
       float late = 0.0; float wt = hq ? woodTone(g, h*13.0, late) : 0.9;
-      vec3 base = mix(vec3(0.27, 0.16, 0.085), vec3(0.4, 0.26, 0.14), h);
+      vec3 base = mix(vec3(0.3, 0.17, 0.08), vec3(0.44, 0.27, 0.13), h);
       base = mix(base, vec3(0.33, 0.24, 0.16), 0.25*step(0.8, hash12(id + 9.0)));
       float knot = 0.0;
       vec2 kc = vec2(hash12(id + 3.0), hash12(id + 4.0));
@@ -832,9 +858,9 @@ Mat getMat(int mid, vec3 wp, vec3 lp, vec3 ln, vec3 hs, vec4 prm, vec4 q, int ty
       m.alb *= 0.85 + 0.25*wear;
       m.rough = 0.42 + 0.28*smoothstep(0.3, 0.8, wear) + 0.3*gap + 0.1*hash12(id + 7.0);
       // cupping + worn grain relief
-      float cup = (fv - 0.5)*0.35;
+      float cup = (fv - 0.5)*0.12;
       vec3 bw = prm.w > 0.5 ? vec3(cup, 0.0, 0.0) : vec3(0.0, 0.0, cup);
-      bw += vec3(vnoise2(g.xy*vec2(3.0, 120.0)) - 0.5, 0.0, vnoise2(g.xy*vec2(3.0, 120.0) + 5.0) - 0.5)*0.05;
+      bw += vec3(vnoise2(fp*7.0) - 0.5, 0.0, vnoise2(fp*7.0 + 5.0) - 0.5)*0.03;
       bump = bw;
     }
     if (insideCastle(wp)) m.alb *= 0.9 + 0.1*smoothstep(0.0, 0.5, min(min(wp.x + 15.0, 15.0 - wp.x), min(wp.z + 10.0, 10.0 - wp.z)));
@@ -1096,7 +1122,16 @@ Mat getMat(int mid, vec3 wp, vec3 lp, vec3 ln, vec3 hs, vec4 prm, vec4 q, int ty
     m.alb *= 0.95 + 0.05*vnoise3(wp*20.0);
   }
   else if (mid == 25){
-    m.alb = vec3(0.02, 0.018, 0.016)*(0.6 + 0.8*fbm3l(wp*6.0)); m.rough = 1.0;
+    vec3 wn2 = abs(qrot(q, ln));
+    vec2 bu = wn2.x > wn2.z ? vec2(wp.z, wp.y) : vec2(wp.x, wp.y);
+    if (wn2.y > 0.6) bu = wp.xz;
+    vec2 bc; vec2 bl; vec2 bsz;
+    float bd = blocks(bu, 0.075, 0.22, 0.24, 0.0, 9.0, bc, bl, bsz);
+    vec3 brick = mix(vec3(0.22, 0.09, 0.05), vec3(0.3, 0.14, 0.08), hash12(bc));
+    float sootAmt = clamp(0.55 + 0.45*smoothstep(0.2, 1.6, wp.y) + 0.3*fbm3l(wp*4.0), 0.0, 1.0);
+    m.alb = mix(brick, vec3(0.015, 0.013, 0.012), sootAmt);
+    m.alb *= mix(1.0, 0.5, 1.0 - smoothstep(0.004, 0.01, bd));
+    m.rough = 0.95;
     // glow from the fire on soot is handled by lights; add a touch of hot back
   }
   else if (mid == 26){
@@ -1224,7 +1259,7 @@ Mat groundMat(vec3 wp){
       if (d < md){ md = d; mc = ip + o; }
     }
     float h = hash12(mc);
-    vec3 c = mix(vec3(0.42, 0.38, 0.32), vec3(0.6, 0.55, 0.46), h);
+    vec3 c = mix(vec3(0.36, 0.35, 0.32), vec3(0.52, 0.5, 0.45), h);
     c = mix(c, vec3(0.3, 0.26, 0.22), step(0.85, hash12(mc + 3.0)));
     float peb = 1.0 - smoothstep(0.0, 0.35, md);
     m.alb = c*(0.55 + 0.45*peb)*(0.85 + 0.25*fbm2(p*0.5));
@@ -1477,7 +1512,7 @@ vec3 sampleCone(vec3 dir, float cosMax){
   vec3 b1, b2; onb(dir, b1, b2);
   return normalize(b1*cos(ph)*st + b2*sin(ph)*st + dir*ct);
 }
-vec3 direct(vec3 p, vec3 gn, Mat m, vec3 v){
+vec3 direct(vec3 p, vec3 gn, Mat m, vec3 v, bool portals){
   vec3 L = vec3(0);
   vec3 n = m.n;
   vec3 po = p + gn*2e-3;
@@ -1529,7 +1564,7 @@ vec3 direct(vec3 p, vec3 gn, Mat m, vec3 v){
     }
   }
   // skylight through window portals (interior points only; BSDF rays escaping to the sky are then ignored)
-  if (room != 0 && uNumPortals > 0){
+  if (portals && room != 0 && uNumPortals > 0){
     float wsum = 0.0;
     for (int i = 0; i < 16; i++){
       if (i >= uNumPortals) break;
@@ -1583,7 +1618,7 @@ void primaryMedia(vec3 ro, vec3 rd, float tEnd, inout vec3 L, inout vec3 thr){
     vec3 ps = ro + rd*ts;
     vec3 T = shadowT(ps, uSunDir, 1e4);
     float sig = uDust*0.0003;
-    L += thr*T*uSunE*cloudShadow(ps)*phaseHG(dot(rd, uSunDir), 0.6)*sig*inLen;
+    L += min(thr*T*uSunE*cloudShadow(ps)*phaseHG(dot(rd, uSunDir), 0.6)*sig*inLen, vec3(0.02));
   }
   float sigF = 0.00012 + uHaze*uHaze*0.02;
   float Tf = exp(-outLen*sigF);
@@ -1744,9 +1779,10 @@ void main(){
     if (bounce >= uMaxBounce) break;
 
     bool deltaLike = m.rough < 0.1 && (m.metal > 0.5 || mid == 33);
-    portalDone = !deltaLike && roomId(wp) != 0 && uNumPortals > 0;
+    bool usePortals = bounce <= 1;
+    portalDone = !deltaLike && usePortals && roomId(wp) != 0 && uNumPortals > 0;
     if (!deltaLike){
-      vec3 c = thr*direct(wp, gn, m, v);
+      vec3 c = thr*direct(wp, gn, m, v, usePortals);
       if (bounce > 0) c *= min(1.0, uIndClamp/max(lum(c), 1e-9));
       L += c;
     }
@@ -1837,6 +1873,7 @@ void main(){
   vec3 n0 = nd.xyz/max(length(nd.xyz), 1e-6);
   vec3 p0 = wpos(p, nd.w);
   float l0 = lum(c0);
+  vec3 a0 = texelFetch(uAlb, p, 0).rgb;
   // 3x3 prefiltered variance of the mean
   float v = 0.0, lm = 0.0;
   for (int j = -1; j <= 1; j++) for (int i = -1; i <= 1; i++){
@@ -1858,7 +1895,9 @@ void main(){
     vec3 pq = wpos(q, ndq.w);
     float wp = exp(-abs(dot(n0, pq - p0))/(0.004 + 0.01*nd.w));
     float wl = exp(-abs(l0 - lum(cq))/sig);
-    float w = k[abs(i)]*k[abs(j)]*wn*wp*wl;
+    vec3 aq = texelFetch(uAlb, q, 0).rgb;
+    float wa = exp(-length(aq - a0)/(0.08*(lum(a0) + lum(aq)) + 0.01)*1.5);
+    float w = k[abs(i)]*k[abs(j)]*wn*wp*wl*wa;
     sum += cq*w; ws += w;
   }
   o = vec4(sum/max(ws, 1e-9), 1.0);
@@ -1900,6 +1939,7 @@ vec3 aces(vec3 c){
   const mat3 O = mat3(1.60475, -0.10208, -0.00327, -0.53108, 1.10813, -0.07276, -0.07367, -0.00605, 1.07602);
   c = I*c; c = RRTAndODTFit(c); c = O*c; return clamp(c, 0.0, 1.0);
 }
+float lum(vec3 c){ return dot(c, vec3(0.2126, 0.7152, 0.0722)); }
 float h12(vec2 p){ vec3 p3 = fract(vec3(p.xyx)*0.1031); p3 += dot(p3, p3.yzx + 33.33); return fract((p3.x + p3.y)*p3.z); }
 void main(){
   vec2 uv = gl_FragCoord.xy/uOut;
@@ -1917,7 +1957,13 @@ void main(){
   float la = textureLod(uHDR, uv, max(uLevels - 4.0, 1.0)).a, lb = textureLod(uHDR, uv, max(uLevels - 2.5, 1.0)).a;
   float lg = textureLod(uHDR, uv, uLevels).a;
   float dl = 0.5*(la + lb) - lg;
-  c *= exp(-uLocal*(0.42*max(dl, 0.0) + 0.12*min(dl, 0.0)));
+  c *= exp(-uLocal*(0.55*max(dl, 0.0) + 0.12*min(dl, 0.0)));
+  // camera auto white balance: partial grey-world on the scene average, slightly warm
+  vec3 avg = max(textureLod(uHDR, vec2(0.5), uLevels).rgb, vec3(1e-6));
+  // only correct cold (blue/green) casts; keep warm lamp/fire/stone moods intact
+  vec3 wbv = vec3(lum(avg))/avg;
+  vec3 wb = vec3(clamp(wbv.r/wbv.g, 1.0, 1.35), 1.0, clamp(wbv.b/wbv.g, 0.75, 1.0));
+  c *= mix(vec3(1.0), wb, 0.6)*vec3(1.03, 1.0, 0.96);
   c *= uExposure;
   c = aces(c*1.1);
   // subtle vignette

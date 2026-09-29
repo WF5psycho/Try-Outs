@@ -9,13 +9,13 @@ const VIEWS = {
   greathall2: { label: 'Great hall · windows', pos: [-12.6, 1.62, -0.9], target: [0, 3.0, -9.5], fly: false },
   library:    { label: 'Library', pos: [5.0, 1.62, -1.2], target: [14.5, 1.2, -8.5], fly: false },
   kitchen:    { label: 'Kitchen', pos: [-4.1, 1.62, 9.45], target: [-14.5, 1.0, 3.0], fly: false },
-  entrance:   { label: 'Entrance hall', pos: [1.5, 1.62, 9.5], target: [1.5, 1.4, 0], fly: false },
+  entrance:   { label: 'Entrance hall', pos: [2.3, 1.62, 9.4], target: [1.2, 1.4, 0], fly: false },
   bedroom:    { label: 'Bedroom', pos: [6.9, 1.62, 9.4], target: [14.6, 0.9, 3.4], fly: false },
 };
 
 const DEFAULTS = {
   time: 16.2, sunRot: 330, season: 0.55,
-  cloud: 0.3, cloudDrift: 0.0, rain: 0.0, haze: 0.12, dust: 0.35,
+  cloud: 0.3, cloudDrift: 0.0, rain: 0.0, haze: 0.12, dust: 0.2,
   warmth: 2700, lampI: 1.0, fireI: 1.0,
   ev: 0.0, debug: 0, bounces: 3, resScale: 0.6, denoise: 1.0, fov: 68, bloom: 0.035, grain: 0.01, animate: 0,
 };
