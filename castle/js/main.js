@@ -17,7 +17,7 @@ const DEFAULTS = {
   time: 16.2, sunRot: 330, season: 0.55,
   cloud: 0.3, cloudDrift: 0.0, rain: 0.0, haze: 0.12, dust: 0.35,
   warmth: 2700, lampI: 1.0, fireI: 1.0,
-  ev: 0.0, bounces: 3, resScale: 0.6, denoise: 1.0, fov: 68, bloom: 0.035, grain: 0.01, animate: 0,
+  ev: 0.0, debug: 0, bounces: 3, resScale: 0.6, denoise: 1.0, fov: 68, bloom: 0.035, grain: 0.01, animate: 0,
 };
 
 const SLIDERS = [
@@ -136,6 +136,15 @@ const App = {
       const scene = buildScene();
       const bvh = buildBVH(scene.prims);
       this.scene = scene;
+      const pd = new Float32Array(48 * 4); let np = 0;
+      for (const pt of scene.portals.slice(0, 16)) {
+        const area = 4 * V.len(pt.u) * V.len(pt.v);
+        const nn = V.norm(V.cross(pt.u, pt.v));
+        const sgn = V.dot(nn, pt.n) >= 0 ? 1 : -1;
+        pd.set([...pt.c, area, ...pt.u, sgn, ...pt.v, 0], np * 12);
+        np++;
+      }
+      this.portalData = { n: np, data: pd };
       this.renderer = new Renderer(this.canvas);
       this.renderer.init();
       this.renderer.setScene(bvh);
@@ -264,7 +273,8 @@ const App = {
       time: P.animate ? t : 0.0,
       numLights: Ls.n, lightPos: Ls.pos, lightCol: Ls.col,
       fireCol: Ls.fire, lampCol: Ls.lamp, candleCol: Ls.candle, fireI: P.fireI, lampI: P.lampI,
-      bounces: P.bounces,
+      bounces: P.bounces, debug: P.debug,
+      numPortals: this.portalData.n, portals: this.portalData.data,
     };
   },
 

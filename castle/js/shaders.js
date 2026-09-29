@@ -66,7 +66,8 @@ vec3 atmos(vec3 rd){
     vec3 att = exp(-(bR*(odR+lR) + bM*1.1*(odM+lM)));
     tR += dR*att; tM += dM*att;
   }
-  return uE0*(pR*bR*tR + pM*bM*tM);
+  // x2.2 approximates multiple scattering + ground bounce missing from the single-scattering integral
+  return 2.2*uE0*(pR*bR*tR + pM*bM*tM);
 }
 void main(){
   vec2 uv = gl_FragCoord.xy/uSize;
@@ -107,6 +108,9 @@ uniform vec4 uLightCol[48];
 uniform vec3 uFireCol, uLampCol, uCandleCol;
 uniform float uFireI, uLampI;
 uniform int uMaxBounce;
+uniform int uDebug;
+uniform int uNumPortals;
+uniform vec4 uPortal[48];   // per portal: centre+area, U half-axis, V half-axis
 uniform float uIndClamp;
 layout(location=0) out vec4 o0;
 layout(location=1) out vec4 o1;
@@ -556,7 +560,10 @@ vec3 rugPattern(vec2 p, vec2 hs, float variant){
     c = mix(c, mix(indigo, ivory*0.7, step(abs(fract(cm*7.0) - 0.5), 0.12)), med);
   }
   c *= 0.8 + 0.35*vnoise2(p*3.0) + 0.1*vnoise2(p*90.0);
-  c = mix(c, vec3(lum(c)), 0.12);
+  // sun-faded, worn antique wool: desaturate and lift towards a warm grey
+  float fade = 0.35 + 0.25*vnoise2(p*1.3);
+  c = mix(c, vec3(lum(c))*vec3(1.1, 1.0, 0.85), fade);
+  c = mix(c, vec3(0.3, 0.25, 0.2), 0.12);
   return c;
 }
 
@@ -639,6 +646,12 @@ vec3 globeColor(vec3 n){
 }
 
 bool insideCastle(vec3 p){ return abs(p.x) < 15.02 && abs(p.z) < 10.02 && p.y < 10.85 && p.y > -0.45; }
+int roomId(vec3 p){
+  if (!(abs(p.x) < 15.3 && abs(p.z) < 10.3 && p.y < 10.9 && p.y > -0.45)) return 0;
+  if (p.z < 0.0) return p.x < 4.0 ? 1 : 2;
+  if (p.x < -3.0) return 3;
+  return p.x < 6.0 ? 4 : 5;
+}
 
 vec3 ember(vec3 p, float amt){
   float n = vnoise3(p*28.0 + vec3(0.0, uTime*0.7, 0.0));
@@ -1431,12 +1444,13 @@ vec3 direct(vec3 p, vec3 gn, Mat m, vec3 v){
     }
   }
   // local lights: pick one by importance
+  int room = roomId(p);
   if (uNumLights > 0){
     float wsum = 0.0;
     for (int i = 0; i < 48; i++){
       if (i >= uNumLights) break;
       vec3 d = uLightPos[i].xyz - p; float r = uLightPos[i].w;
-      float w = uLightCol[i].w/max(dot(d, d), r*r*4.0);
+      float w = uLightCol[i].w/max(dot(d, d), r*r*4.0)*(roomId(uLightPos[i].xyz) == room ? 1.0 : 0.02);
       wsum += w;
     }
     if (wsum > 0.0){
@@ -1444,7 +1458,7 @@ vec3 direct(vec3 p, vec3 gn, Mat m, vec3 v){
       for (int i = 0; i < 48; i++){
         if (i >= uNumLights) break;
         vec3 d = uLightPos[i].xyz - p; float r = uLightPos[i].w;
-        float w = uLightCol[i].w/max(dot(d, d), r*r*4.0);
+        float w = uLightCol[i].w/max(dot(d, d), r*r*4.0)*(roomId(uLightPos[i].xyz) == room ? 1.0 : 0.02);
         acc += w; sel = i; wsel = w;
         if (acc >= x) break;
       }
@@ -1461,6 +1475,43 @@ vec3 direct(vec3 p, vec3 gn, Mat m, vec3 v){
           vec3 T = shadowT(po, l, dist - r);
           L += T*Le*evalBRDF(m, n, v, l)*nl/pdf/(wsel/wsum);
         }
+      }
+    }
+  }
+  // skylight through window portals (interior points only; BSDF rays escaping to the sky are then ignored)
+  if (room != 0 && uNumPortals > 0){
+    float wsum = 0.0;
+    for (int i = 0; i < 16; i++){
+      if (i >= uNumPortals) break;
+      vec4 C = uPortal[i*3]; vec3 U = uPortal[i*3 + 1].xyz, Vv = uPortal[i*3 + 2].xyz;
+      vec3 N = normalize(cross(U, Vv))*uPortal[i*3 + 1].w;
+      vec3 d = p - C.xyz; float dd = dot(d, d);
+      float w = C.w*max(dot(N, d), 0.0)/(dd*sqrt(dd) + 0.05);
+      wsum += w;
+    }
+    if (wsum > 0.0){
+      float x = rnd()*wsum; int sel = 0; float wsel = 0.0; float acc = 0.0;
+      for (int i = 0; i < 16; i++){
+        if (i >= uNumPortals) break;
+        vec4 C = uPortal[i*3]; vec3 U = uPortal[i*3 + 1].xyz, Vv = uPortal[i*3 + 2].xyz;
+        vec3 N = normalize(cross(U, Vv))*uPortal[i*3 + 1].w;
+        vec3 d = p - C.xyz; float dd = dot(d, d);
+        float w = C.w*max(dot(N, d), 0.0)/(dd*sqrt(dd) + 0.05);
+        acc += w; sel = i; wsel = w;
+        if (acc >= x) break;
+      }
+      vec4 C = uPortal[sel*3]; vec3 U = uPortal[sel*3 + 1].xyz, Vv = uPortal[sel*3 + 2].xyz;
+      vec3 N = normalize(cross(U, Vv))*uPortal[sel*3 + 1].w;
+      vec3 s = C.xyz + (rnd()*2.0 - 1.0)*U + (rnd()*2.0 - 1.0)*Vv;
+      vec3 d = s - p; float dist = length(d); vec3 l = d/dist;
+      float cp = dot(N, -l);
+      float nl = dot(n, l);
+      if (cp > 0.0 && nl > 0.0 && dot(gn, l) > 0.0 && l.y > 0.0){
+        float pdf = dist*dist/(C.w*cp)*(wsel/wsum);
+        vec3 f = evalBRDF(m, n, v, l);
+        vec3 T = shadowT(po, l, 1e4);
+        vec3 c = T*skyLUT(l)*f*nl/pdf;
+        L += min(c, vec3(4.0));
       }
     }
   }
@@ -1481,7 +1532,7 @@ void primaryMedia(vec3 ro, vec3 rd, float tEnd, inout vec3 L, inout vec3 thr){
     float ts = a + rnd()*inLen;
     vec3 ps = ro + rd*ts;
     vec3 T = shadowT(ps, uSunDir, 1e4);
-    float sig = uDust*0.0035;
+    float sig = uDust*0.0003;
     L += thr*T*uSunE*cloudShadow(ps)*phaseHG(dot(rd, uSunDir), 0.6)*sig*inLen;
   }
   float sigF = 0.00012 + uHaze*uHaze*0.02;
@@ -1531,6 +1582,7 @@ void main(){
   vec3 gAlb = vec3(1), gN = -rd, gEmis = vec3(0); float gDist = 1e4;
   float pathLen = 0.0;
   int bounce = 0;
+  bool portalDone = false;
   bool first = true;
   bool primarySeg = true;
   vec3 camRo = ro, camRd = rd;
@@ -1541,6 +1593,7 @@ void main(){
 
     if (!hit){
       if (primarySeg){ primaryMedia(camRo, camRd, pathLen + 1500.0, L, thr); primarySeg = false; }
+      if (!chain && portalDone) break;
       vec3 sky = chain ? skyFull(rd) : skyLUT(rd);
       if (bounce > 0) sky *= min(1.0, uIndClamp/max(lum(thr*sky), 1e-9));
       if (chain && dot(rd, uSunDir) > uSunCos){
@@ -1641,6 +1694,7 @@ void main(){
     if (bounce >= uMaxBounce) break;
 
     bool deltaLike = m.rough < 0.1 && (m.metal > 0.5 || mid == 33);
+    portalDone = !deltaLike && roomId(wp) != 0 && uNumPortals > 0;
     if (!deltaLike){
       vec3 c = thr*direct(wp, gn, m, v);
       if (bounce > 0) c *= min(1.0, uIndClamp/max(lum(c), 1e-9));
@@ -1666,6 +1720,7 @@ void main(){
   if (!gSet){ gEmis = L; }
   if (any(isnan(gAlb)) || any(isnan(gN)) || any(isnan(gEmis)) || dot(gN, gN) < 1e-8){ gAlb = vec3(1); gN = -camRd; gEmis = L; }
   vec4 prev0 = texelFetch(uPrev0, pix, 0), prev1 = texelFetch(uPrev1, pix, 0), prev2 = texelFetch(uPrev2, pix, 0), prev3 = texelFetch(uPrev3, pix, 0);
+  if (uDebug == 1){ L = gAlb*0.18; gEmis = L; }
   float il = lum(max(L - gEmis, 0.0)/max(gAlb, vec3(0.004)));
   o0 = vec4(mix(prev0.rgb, L, uBlend), mix(prev0.a, il*il, uBlend));
   o1 = vec4(mix(prev1.rgb, gAlb, uBlend), 1.0);
@@ -1683,6 +1738,7 @@ uniform int uFirst;
 uniform float uSigL;        // user strength
 uniform float uSpp;
 uniform float uPass;
+uniform float uLumRef;
 uniform vec3 uCamPos, uCamFwd, uCamRight, uCamUp;
 uniform float uTanHalf;
 uniform vec2 uRes;
@@ -1691,7 +1747,8 @@ float lum(vec3 c){ return dot(c, vec3(0.2126, 0.7152, 0.0722)); }
 vec3 illum(ivec2 p){
   if (uFirst == 1){
     vec3 r = texelFetch(uIn, p, 0).rgb, a = texelFetch(uAlb, p, 0).rgb, e = texelFetch(uEm, p, 0).rgb;
-    return max(r - e, 0.0)/max(a, vec3(0.004));
+    vec3 il = min(max(r - e, 0.0)/max(a, vec3(0.004)), vec3(1e5));
+    return (any(isnan(il)) || any(isinf(il))) ? vec3(0) : il;
   }
   return texelFetch(uIn, p, 0).rgb;
 }
@@ -1714,12 +1771,14 @@ void main(){
   vec3 p0 = wpos(p, nd.w);
   float l0 = lum(c0);
   // 3x3 prefiltered variance of the mean
-  float v = 0.0;
+  float v = 0.0, lm = 0.0;
   for (int j = -1; j <= 1; j++) for (int i = -1; i <= 1; i++){
     ivec2 q = clamp(p + ivec2(i, j), ivec2(0), sz - 1);
-    v += varAt(q)*((i == 0 && j == 0) ? 0.25 : (i == 0 || j == 0 ? 0.125 : 0.0625));
+    float w = (i == 0 && j == 0) ? 0.25 : (i == 0 || j == 0 ? 0.125 : 0.0625);
+    v += varAt(q)*w;
+    lm += lum(illum(q))*w;
   }
-  float sig = uSigL*4.0*sqrt(v)*pow(0.6, uPass) + 1e-4*(l0 + 1e-3);
+  float sig = uSigL*(4.0*sqrt(v) + 2.0*lm/sqrt(uSpp) + 1.5*uLumRef/sqrt(uSpp))*pow(0.65, uPass) + 1e-6;
   const float k[3] = float[3](0.375, 0.25, 0.0625);
   vec3 sum = vec3(0); float ws = 0.0;
   for (int j = -2; j <= 2; j++) for (int i = -2; i <= 2; i++){
@@ -1753,7 +1812,7 @@ void main(){
   c = min(c, vec3(6e4));
   if (any(isnan(c)) || any(isinf(c)) || !(lum(c) >= 0.0)) c = vec3(0);
   c = max(c, vec3(0));
-  o = vec4(c, log(max(lum(c), 1e-6)));
+  o = vec4(c, log(max(lum(c), 1e-5)));
 }`;
 
 // ---------------------------------------------------------------- final tonemap

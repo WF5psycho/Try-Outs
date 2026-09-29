@@ -116,7 +116,7 @@ class Renderer {
       gl.bindFramebuffer(gl.FRAMEBUFFER, s.fbo);
       gl.clearColor(0, 0, 0, 0); gl.clear(gl.COLOR_BUFFER_BIT);
     }
-    this.dn = [0, 1].map(() => { const tex = this.makeTex(w, h, gl.RGBA16F, gl.RGBA, gl.HALF_FLOAT, gl.NEAREST); return { tex, fbo: this.makeFbo([tex]) }; });
+    this.dn = [0, 1].map(() => { const tex = this.makeTex(w, h, gl.RGBA32F, gl.RGBA, gl.FLOAT, gl.NEAREST); return { tex, fbo: this.makeFbo([tex]) }; });
     this.levels = Math.floor(Math.log2(Math.max(w, h)));
     this.hdrTex = gl.createTexture();
     gl.bindTexture(gl.TEXTURE_2D, this.hdrTex);
@@ -205,7 +205,10 @@ class Renderer {
     gl.uniform1f(this.u(p, 'uFireI'), S.fireI);
     gl.uniform1f(this.u(p, 'uLampI'), S.lampI);
     gl.uniform1i(this.u(p, 'uMaxBounce'), S.bounces);
-    gl.uniform1f(this.u(p, 'uIndClamp'), this.logAvg === null ? 1e6 : 14.0 / Math.max(this.exposure / Math.pow(2, opts.ev || 0), 1e-6));
+    gl.uniform1i(this.u(p, 'uDebug'), S.debug || 0);
+    gl.uniform1i(this.u(p, 'uNumPortals'), S.numPortals);
+    gl.uniform4fv(this.u(p, 'uPortal'), S.portals);
+    gl.uniform1f(this.u(p, 'uIndClamp'), S.indClamp || 1.5);
     gl.uniform1i(this.u(p, 'uRoot0'), this.roots[0]);
     gl.uniform1i(this.u(p, 'uRoot1'), this.roots[1]);
     gl.uniform1i(this.u(p, 'uRoot2'), this.roots[2]);
@@ -237,6 +240,7 @@ class Renderer {
       this.bindTex(p, 'uEm', 3, A.tex[3]);
       this.bindTex(p, 'uMom', 4, A.tex[0]);
       gl.uniform1f(this.u(p, 'uSpp'), this.spp);
+      gl.uniform1f(this.u(p, 'uLumRef'), this.logAvg === null ? 0.0 : 3.0 * Math.exp(this.logAvg));
       this.setCam(p, C);
       gl.uniform2f(this.u(p, 'uRes'), W, H);
       gl.uniform1f(this.u(p, 'uSigL'), opts.denoiseStrength);

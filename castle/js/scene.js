@@ -21,6 +21,7 @@ function packColor(hex) {
 function buildScene() {
   const prims = [];
   const lights = [];
+  const portals = [];   // window openings (inner wall face) used for skylight sampling
   const rand = mulberry32(1337);
   let X = { t: [0, 0, 0], q: [0, 0, 0, 1] };
   const stack = [];
@@ -114,6 +115,9 @@ function buildScene() {
     const trimOut = outer + dir * 0.04;
     const mull = opt.mullion !== false;
     const transoms = opt.transoms || [];
+    // portal at the inner face of the opening, normal pointing into the room
+    if (axis === 'z') portals.push({ c: [c, (y0 + y1) / 2, inner], u: [w / 2, 0, 0], v: [0, (y1 - y0) / 2, 0], n: [0, 0, -dir] });
+    else portals.push({ c: [inner, (y0 + y1) / 2, c], u: [0, 0, w / 2], v: [0, (y1 - y0) / 2, 0], n: [-dir, 0, 0] });
     const place = (a0, a1, yy0, yy1, d0, d1, mat, o) => {
       if (axis === 'z') box(a0, yy0, Math.min(d0, d1), a1, yy1, Math.max(d0, d1), mat, o);
       else box(Math.min(d0, d1), yy0, a0, Math.max(d0, d1), yy1, a1, mat, o);
@@ -138,7 +142,12 @@ function buildScene() {
   const EXT = { x0: -16, x1: 16, z0: -11, z1: 11 };
 
   // plinth / base course
-  box(-16.25, -0.5, -11.25, 16.25, 0.05, 11.25, M.STONE_TRIM, { seed: 3 });
+  box(-16.25, -0.5, -11.25, 16.25, 0.25, -11.0, M.STONE_TRIM, { seed: 3 });
+  box(-16.25, -0.5, 11.0, 0.5, 0.25, 11.25, M.STONE_TRIM, { seed: 4 });
+  box(2.5, -0.5, 11.0, 16.25, 0.25, 11.25, M.STONE_TRIM, { seed: 5 });
+  box(0.5, -0.5, 11.0, 2.5, 0.05, 11.25, M.STONE_TRIM, { seed: 6 });
+  box(-16.25, -0.5, -11.0, -16.0, 0.25, 11.0, M.STONE_TRIM, { seed: 7 });
+  box(16.0, -0.5, -11.0, 16.25, 0.25, 11.0, M.STONE_TRIM, { seed: 8 });
   // entrance steps
   box(-0.1, -0.5, 11.25, 3.1, -0.22, 12.0, M.STONE_TRIM);
   box(0.1, -0.5, 11.25, 2.9, 0.05, 11.62, M.STONE_TRIM);
@@ -1026,5 +1035,7 @@ function buildScene() {
   tree(-34, 10, 1.3); tree(-38, -12, 1.5); tree(36, 18, 1.4); tree(40, -6, 1.2); tree(-30, 42, 1.4); tree(34, 46, 1.6);
   tree(-22, -34, 1.3); tree(18, -38, 1.5);
 
-  return { prims, lights };
+  // front door opening
+  portals.push({ c: [1.5, 1.675, 10], u: [1.0, 0, 0], v: [0, 1.625, 0], n: [0, 0, -1] });
+  return { prims, lights, portals };
 }
