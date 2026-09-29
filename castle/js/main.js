@@ -273,7 +273,7 @@ const App = {
       time: P.animate ? t : 0.0,
       numLights: Ls.n, lightPos: Ls.pos, lightCol: Ls.col,
       fireCol: Ls.fire, lampCol: Ls.lamp, candleCol: Ls.candle, fireI: P.fireI, lampI: P.lampI,
-      bounces: P.bounces, debug: P.debug,
+      bounces: this.moving ? Math.min(P.bounces, 2) : P.bounces, debug: P.debug,
       numPortals: this.portalData.n, portals: this.portalData.data,
     };
   },
@@ -291,7 +291,11 @@ const App = {
   loop(now) {
     const dt = (now - this.last) / 1000; this.last = now;
     const moved = this.controls.update(dt);
-    if (moved || P.animate) { if (moved) this.renderer.reset(); }
+    if (moved) { this.renderer.reset(); this.lastMove = now; }
+    // lighter paths while the camera is moving keeps navigation fluid; full quality once still
+    this.moving = now - (this.lastMove || 0) < 120;
+    if (this.wasMoving && !this.moving) this.renderer.reset();
+    this.wasMoving = this.moving;
     const maxSpp = 4096;
     if (this.renderer.spp < maxSpp || P.animate) this.renderOnce(now / 1000);
     this.fpsAcc += dt; this.fpsN++;

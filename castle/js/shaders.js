@@ -461,7 +461,7 @@ float woodTone(vec3 g, float seed, out float late){
   float r = length(c)*42.0 + 1.6*vnoise3(g*vec3(0.25, 3.0, 3.0) + seed);
   float f = fract(r);
   late = smoothstep(0.45, 0.85, f)*smoothstep(1.0, 0.9, f);
-  float streak = vnoise3(g*vec3(1.5, 90.0, 90.0) + seed);
+  float streak = vnoise3(g*vec3(1.5, 40.0, 40.0) + seed)*0.6;
   float pores = vnoise3(g*vec3(12.0, 400.0, 400.0));
   return 1.0 - 0.28*late - 0.12*streak - 0.06*pores*late;
 }
@@ -469,6 +469,7 @@ float woodTone(vec3 g, float seed, out float late){
 // generic irregular block pattern (stone courses, flagstones)
 float blocks(vec2 uv, float rowH, float minL, float maxL, float wob, float seed, out vec2 cell, out vec2 local, out vec2 size){
   vec2 w = uv + wob*vec2(vnoise2(uv*2.3 + seed), vnoise2(uv*2.3 + seed + 17.3)) - wob*0.5;
+  w.y += rowH*0.45*vnoise2(vec2(w.y/rowH*0.37, seed + 3.0));   // courses of varying height
   float row = floor(w.y/rowH);
   float bl = minL + (maxL - minL)*hash11(row*1.37 + 2.1 + seed);
   float xo = w.x + hash11(row + 5.3 + seed)*7.0;
@@ -476,7 +477,11 @@ float blocks(vec2 uv, float rowH, float minL, float maxL, float wob, float seed,
   local = vec2(fract(xo/bl)*bl, fract(w.y/rowH)*rowH);
   size = vec2(bl, rowH);
   cell = vec2(col, row);
-  return min(min(local.x, bl - local.x), min(local.y, rowH - local.y));
+  // random-ashlar: some stones are split into two courses or two shorter stones
+  float hs = hash12(cell + seed*1.7);
+  if (hs < 0.3){ float up = step(rowH*0.5, local.y); local.y -= up*rowH*0.5; size.y = rowH*0.5; cell += vec2(0.0, up*0.5); }
+  else if (hs > 0.78){ float rt = step(bl*0.45, local.x); local.x -= rt*bl*0.45; size.x = mix(bl*0.45, bl*0.55, rt); cell += vec2(rt*0.5, 0.0); }
+  return min(min(local.x, size.x - local.x), min(local.y, size.y - local.y));
 }
 
 float stoneHeight(vec2 uv, float seed, float rowH, float minL, float maxL, float wob, out vec2 cell, out float dE){
@@ -569,6 +574,19 @@ vec3 rugPattern(vec2 p, vec2 hs, float variant){
 
 vec3 paintingColor(vec2 uv, float variant, float seed){
   vec3 c;
+  if (variant > 3.5){
+    // verdure tapestry: foliage field, faded, with a woven border
+    vec2 e = min(uv, 1.0 - uv);
+    float border = step(min(e.x, e.y*1.3), 0.07);
+    float f1 = fbm2(uv*vec2(7.0, 5.0) + seed), f2 = fbm2(uv*vec2(16.0, 12.0) + seed + 4.0);
+    c = mix(vec3(0.07, 0.1, 0.07), vec3(0.2, 0.22, 0.12), smoothstep(0.35, 0.7, f1));
+    c = mix(c, vec3(0.32, 0.27, 0.15), smoothstep(0.62, 0.8, f2)*0.8);
+    c = mix(c, vec3(0.1, 0.12, 0.16), smoothstep(0.55, 0.75, fbm2(uv*3.0 + 9.0))*0.5*step(0.55, uv.y));
+    vec3 bc = mix(vec3(0.25, 0.12, 0.07), vec3(0.4, 0.32, 0.18), step(0.5, fract((uv.x + uv.y)*18.0)));
+    c = mix(c, bc, border);
+    c *= 0.85 + 0.15*step(0.5, fract(uv.x*260.0))*step(0.5, fract(uv.y*200.0)) + 0.1*vnoise2(uv*300.0);
+    return mix(c, vec3(lum(c)), 0.2)*1.1;
+  }
   if (variant > 2.5){
     // seascape
     float hor = 0.38;
@@ -645,9 +663,16 @@ vec3 globeColor(vec3 n){
   return c*vec3(1.0, 0.92, 0.72);
 }
 
+float sootAt(vec3 p){
+  float s = 0.0;
+  vec3 d = (p - vec3(-14.0, 2.55, -5.15))/vec3(0.4, 1.1, 1.5); s = max(s, 1.0 - dot(d, d));
+  d = (p - vec3(-14.0, 2.6, 5.15))/vec3(0.4, 1.2, 1.8); s = max(s, 1.0 - dot(d, d));
+  d = (p - vec3(10.65, 1.25, 0.97))/vec3(0.7, 0.6, 0.25); s = max(s, 1.0 - dot(d, d));
+  return clamp(s, 0.0, 1.0);
+}
 bool insideCastle(vec3 p){ return abs(p.x) < 15.02 && abs(p.z) < 10.02 && p.y < 10.85 && p.y > -0.45; }
 int roomId(vec3 p){
-  if (!(abs(p.x) < 15.3 && abs(p.z) < 10.3 && p.y < 10.9 && p.y > -0.45)) return 0;
+  if (!(abs(p.x) < 15.67 && abs(p.z) < 10.67 && p.y < 10.9 && p.y > -0.45)) return 0;
   if (p.z < 0.0) return p.x < 4.0 ? 1 : 2;
   if (p.x < -3.0) return 3;
   return p.x < 6.0 ? 4 : 5;
@@ -711,11 +736,12 @@ Mat getMat(int mid, vec3 wp, vec3 lp, vec3 ln, vec3 hs, vec4 prm, vec4 q, int ty
       bool lime = inside && ((wp.x > 6.25 && wp.z > 0.25) || (wp.x < -3.25 && wp.z > 0.25));
       if (lime){
         float lw = 0.86 + 0.1*(hq ? fbm2(wuv*1.7 + 3.0) : 0.5);
-        vec3 limec = vec3(0.8, 0.77, 0.7)*lw;
-        limec = mix(limec, limec*0.8, mj*0.6);
+        vec3 limec = vec3(0.79, 0.73, 0.62)*lw;
+        limec = mix(limec, limec*0.88, mj*0.25);
+        limec *= 0.94 + 0.08*(hq ? vnoise2(wuv*3.0 + 7.0) : 0.5);
         limec *= 0.97 + 0.06*r1;
         m.alb = limec; m.rough = 0.95;
-        bump *= 0.45;
+        bump *= 0.3;
         m.alb *= 0.9 + 0.1*smoothstep(0.0, 0.5, wp.y);
       } else if (inside){
         m.alb *= 0.82 + 0.18*smoothstep(0.0, 0.9, wp.y);
@@ -753,6 +779,7 @@ Mat getMat(int mid, vec3 wp, vec3 lp, vec3 ln, vec3 hs, vec4 prm, vec4 q, int ty
       }
     }
     if (!inside && uWet > 0.0){ m.alb *= mix(1.0, 0.55, uWet); m.rough = mix(m.rough, 0.3, uWet); }
+    if (inside){ float so = sootAt(wp); if (so > 0.0) m.alb *= 1.0 - 0.8*so*(0.6 + 0.4*vnoise3(wp*6.0)); }
   }
   else if (mid == 2){
     // ---- wide plank oak floor (x = 0 along x, 1 along z, 2 chevron)
@@ -782,7 +809,8 @@ Mat getMat(int mid, vec3 wp, vec3 lp, vec3 ln, vec3 hs, vec4 prm, vec4 q, int ty
       bump = vec3(0.0, 0.0, 0.0);
     } else {
       pw = 0.27;
-      float pi = floor(fp.y/pw); fv = fract(fp.y/pw);
+      float yw = fp.y + 0.1*vnoise2(vec2(fp.y*1.9, 3.0));
+      float pi = floor(yw/pw); fv = fract(yw/pw);
       float off = hash11(pi*1.3)*9.0;
       plen = 2.1 + 1.9*hash11(pi*2.7 + 1.0);
       float seg = floor((fp.x + off)/plen); fu = fract((fp.x + off)/plen);
@@ -802,7 +830,7 @@ Mat getMat(int mid, vec3 wp, vec3 lp, vec3 ln, vec3 hs, vec4 prm, vec4 q, int ty
       m.alb *= 1.0 - 0.85*gap;
       float wear = fbm2(wp.xz*0.35);
       m.alb *= 0.85 + 0.25*wear;
-      m.rough = 0.3 + 0.3*smoothstep(0.3, 0.8, wear) + 0.4*gap;
+      m.rough = 0.42 + 0.28*smoothstep(0.3, 0.8, wear) + 0.3*gap + 0.1*hash12(id + 7.0);
       // cupping + worn grain relief
       float cup = (fv - 0.5)*0.35;
       vec3 bw = prm.w > 0.5 ? vec3(cup, 0.0, 0.0) : vec3(0.0, 0.0, cup);
@@ -825,8 +853,9 @@ Mat getMat(int mid, vec3 wp, vec3 lp, vec3 ln, vec3 hs, vec4 prm, vec4 q, int ty
       bump = -vec3(gr.x, 0.0, gr.y)*0.02;
     }
     float r1 = hash12(cell), r2 = hash12(cell + 2.2);
-    vec3 st = mix(vec3(0.33, 0.31, 0.28), vec3(0.5, 0.45, 0.37), r1);
-    st = mix(st, vec3(0.42, 0.36, 0.28), step(0.7, r2)*0.5);
+    vec3 st = mix(vec3(0.3, 0.26, 0.2), vec3(0.47, 0.4, 0.3), r1);
+    st = mix(st, vec3(0.33, 0.33, 0.32), step(0.72, r2)*0.6);
+    st = mix(st, vec3(0.45, 0.33, 0.22), step(0.9, hash12(cell + 5.5))*0.6);
     st *= 0.8 + 0.35*fbm2(fuv*3.0 + cell);
     float worn = fbm2(fuv*0.6);
     float mj = 1.0 - smoothstep(0.005, 0.014, dE);
@@ -886,6 +915,12 @@ Mat getMat(int mid, vec3 wp, vec3 lp, vec3 ln, vec3 hs, vec4 prm, vec4 q, int ty
     m.rough = 0.92;
     bump = (vec3(vnoise3(lp*5.0 + seed), vnoise3(lp*5.0 + seed + 9.0), vnoise3(lp*5.0 + seed + 19.0)) - 0.5)*0.35;
     bump += (vec3(vnoise3(lp*260.0), 0.0, vnoise3(lp*260.0 + 3.0)) - 0.5)*0.12;
+    if (prm.w > 1.5 && mid == 6){
+      float ph = lp.x*46.0 + 1.3*vnoise2(vec2(lp.y*0.8, seed));
+      bump += vec3(cos(ph)*0.75, 0.0, 0.0);
+      m.alb *= 0.8 + 0.2*(0.5 + 0.5*sin(ph));
+      m.alb *= 0.9 + 0.1*smoothstep(-hs.y, hs.y, lp.y);
+    }
     if (mid == 18){
       m.trans = 0.3;
       m.emit = uLampCol*uLampI*prm.w*0.55*base*1.6;
@@ -1085,8 +1120,9 @@ Mat getMat(int mid, vec3 wp, vec3 lp, vec3 ln, vec3 hs, vec4 prm, vec4 q, int ty
   else if (mid == 28){
     // ---- firewood logs (x=1 in fire, x=2 ember bed)
     if (prm.w > 1.5){
-      m.alb = vec3(0.03, 0.025, 0.02); m.rough = 1.0;
-      m.emit = ember(wp, 1.5);
+      float ash = vnoise3(wp*18.0);
+      m.alb = mix(vec3(0.03, 0.025, 0.02), vec3(0.22, 0.21, 0.2), smoothstep(0.35, 0.7, ash)); m.rough = 1.0;
+      m.emit = ember(wp, 1.2)*smoothstep(0.55, 0.8, vnoise3(wp*9.0 + 4.0));
     } else {
       bool cap = type == 2 && abs(ln.y) > 0.5;
       if (cap){
@@ -1105,7 +1141,9 @@ Mat getMat(int mid, vec3 wp, vec3 lp, vec3 ln, vec3 hs, vec4 prm, vec4 q, int ty
       if (prm.w > 0.5){
         float charred = smoothstep(0.2, 0.7, vnoise3(wp*12.0));
         m.alb = mix(m.alb, vec3(0.02, 0.018, 0.016), max(charred, 0.6));
-        m.emit = ember(wp, 1.0)*smoothstep(0.35, 0.55, vnoise3(wp*20.0));
+        float under = smoothstep(0.3, -0.5, qrot(q, ln).y);
+        float cracks = smoothstep(0.62, 0.78, vnoise3(wp*24.0));
+        m.emit = ember(wp, 0.8)*max(under*0.7, cracks)*smoothstep(0.35, 0.55, vnoise3(wp*20.0));
       }
     }
   }
@@ -1113,7 +1151,7 @@ Mat getMat(int mid, vec3 wp, vec3 lp, vec3 ln, vec3 hs, vec4 prm, vec4 q, int ty
     if (ln.z > 0.5){
       vec2 puv = lp.xy/hs.xy*0.5 + 0.5;
       m.alb = paintingColor(puv, prm.w, seed);
-      m.rough = 0.35; m.spec = 0.045;
+      m.rough = prm.w > 3.5 ? 1.0 : 0.35; m.spec = 0.045;
       bump = (vec3(vnoise2(puv*300.0), vnoise2(puv*300.0 + 3.0), 0.0) - 0.5)*0.06;
     } else { m.alb = vec3(0.15, 0.13, 0.1); m.rough = 0.9; }
   }
@@ -1142,11 +1180,23 @@ Mat getMat(int mid, vec3 wp, vec3 lp, vec3 ln, vec3 hs, vec4 prm, vec4 q, int ty
     m.rough = 0.85;
   }
   else if (mid == 36){ m.alb = vec3(0.5, 0.5, 0.48)*(0.8 + 0.3*vnoise3(wp*15.0)); m.metal = 1.0; m.rough = 0.35; }
-  else if (mid == 37){ m.alb = vec3(0.9); m.rough = 0.3; m.emit = uLampCol*uLampI*1.8; }
+  else if (mid == 37){ m.alb = vec3(0.9); m.rough = 0.3; m.emit = uLampCol*uLampI*0.7*(0.6 + 0.4*smoothstep(-1.0, 0.5, lp.y/hs.y)); }
   else if (mid == 38){
     m.alb = unpackCol(prm.z, vec3(0.5)); m.rough = prm.w > 0.01 ? prm.w : 0.5;
     m.alb *= 0.92 + 0.12*vnoise3(wp*30.0 + seed);
     if (prm.w > 0.9) bump = (vec3(vnoise3(wp*8.0), vnoise3(wp*8.0 + 1.0), vnoise3(wp*8.0 + 2.0)) - 0.5)*0.8;
+  }
+  else if (mid == 40){
+    // distant meadow hills with hedgerows and copses
+    vec2 p = wp.xz;
+    vec3 c = mix(vec3(0.09, 0.13, 0.04), vec3(0.14, 0.15, 0.06), fbm2(p*0.01));
+    float field = hash12(floor(p/vec2(90.0, 70.0)));
+    c = mix(c, vec3(0.2, 0.17, 0.08), step(0.72, field)*0.7);
+    float wood = smoothstep(0.55, 0.62, fbm2(p*0.008 + 7.0));
+    c = mix(c, vec3(0.025, 0.045, 0.015), wood);
+    c *= 0.8 + 0.4*vnoise2(p*0.3);
+    m.alb = c; m.rough = 0.85;
+    bump = (vec3(vnoise3(wp*0.5), 0.0, vnoise3(wp*0.5 + 3.0)) - 0.5)*(0.3 + wood*1.5);
   }
   else if (mid == 39){
     m.alb = globeColor(normalize(lp)); m.rough = 0.25; m.spec = 0.05;
@@ -1162,7 +1212,7 @@ Mat groundMat(vec3 wp){
   vec2 p = wp.xz;
   float edge = fbm2(p*0.4)*0.8;
   float dRect = max(abs(p.x) - 16.0, abs(p.y) - 11.0);
-  bool drive = p.x > -1.5 && p.x < 4.5 && p.y > 11.0;
+  bool drive = p.x > -1.5 + 0.4*sin(p.y*0.05) && p.x < 4.5 + 0.4*sin(p.y*0.05) && p.y > 11.0 && p.y < 90.0;
   float g = max(step(dRect, 4.2 + edge*0.5), float(drive));
   vec3 bump;
   if (g > 0.5){
@@ -1634,7 +1684,7 @@ void main(){
           vec3 pk = o + d*tk;
           vec3 u = pk/pb.xyz;
           float dens = vnoise3(pk*2.2 + pa.xyz)*0.65 + vnoise3(pk*7.0 + pa.xyz)*0.35 - dot(u, u)*0.5;
-          if (dens > 0.28){ tl = tk; nl = normalize(u*0.8 + (vec3(vnoise3(pk*5.0), vnoise3(pk*5.0 + 2.0), vnoise3(pk*5.0 + 5.0)) - 0.5)*1.6); break; }
+          if (dens > 0.33){ tl = tk; nl = normalize(u*0.8 + (vec3(vnoise3(pk*5.0), vnoise3(pk*5.0 + 2.0), vnoise3(pk*5.0 + 5.0)) - 0.5)*1.6); break; }
         }
         if (tl < 0.0){ ro = ro + rd*(t1 + 1e-3); pathLen += t1 - h.t; continue; }
         pathLen += tl - h.t;
@@ -1766,6 +1816,23 @@ void main(){
   ivec2 sz = ivec2(uRes);
   vec4 nd = texelFetch(uND, p, 0);
   vec3 c0 = illum(p);
+  if (uFirst == 1){
+    // outlier (firefly / dead pixel) rejection against the 3x3 neighbourhood
+    float mx = 0.0, mn = 1e20;
+    for (int j = -1; j <= 1; j++) for (int i = -1; i <= 1; i++){
+      if (i == 0 && j == 0) continue;
+      ivec2 q = clamp(p + ivec2(i, j), ivec2(0), sz - 1);
+      if (texelFetch(uND, q, 0).w > 9000.0) continue;
+      float lq = lum(illum(q)); mx = max(mx, lq); mn = min(mn, lq);
+    }
+    float l = lum(c0);
+    if (nd.w < 9000.0 && uSigL > 0.0){
+      float hi = 2.5*mx + 1e-6, lo = 0.3*min(mn, 1e19);
+      if (l > hi) c0 *= hi/l;
+      else if (l < lo) c0 = l > 1e-9 ? c0*(lo/l) : vec3(lo);
+    }
+    o = vec4(c0, 1.0); return;
+  }
   if (nd.w > 9000.0 || uSigL <= 0.0){ o = vec4(c0, 1.0); return; }
   vec3 n0 = nd.xyz/max(length(nd.xyz), 1e-6);
   vec3 p0 = wpos(p, nd.w);
@@ -1825,6 +1892,7 @@ uniform vec2 uOut;
 uniform float uLevels;
 uniform float uGrain;
 uniform int uFrame;
+uniform float uLocal;
 out vec4 o;
 vec3 RRTAndODTFit(vec3 v){ vec3 a = v*(v + 0.0245786) - 0.000090537; vec3 b = v*(0.983729*v + 0.4329510) + 0.238081; return a/b; }
 vec3 aces(vec3 c){
@@ -1845,6 +1913,11 @@ void main(){
   }
   b /= max(wsum, 1e-4);
   c = mix(c, b, uBloom);
+  // local tone mapping (exposure-fusion style): pull bright regions such as windows down, lift deep shadows slightly
+  float la = textureLod(uHDR, uv, max(uLevels - 4.0, 1.0)).a, lb = textureLod(uHDR, uv, max(uLevels - 2.5, 1.0)).a;
+  float lg = textureLod(uHDR, uv, uLevels).a;
+  float dl = 0.5*(la + lb) - lg;
+  c *= exp(-uLocal*(0.42*max(dl, 0.0) + 0.12*min(dl, 0.0)));
   c *= uExposure;
   c = aces(c*1.1);
   // subtle vignette

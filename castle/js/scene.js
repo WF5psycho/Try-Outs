@@ -9,7 +9,7 @@ const M = {
   LEATHER: 8, WOOD: 9, BRASS: 10, IRON: 11, GLASS: 12, BOOKS: 13, RUG: 14, FIRE: 15, WAX: 16,
   FLAME: 17, SHADE: 18, GROUND: 19, BOARDS: 20, SLATE: 21, HEDGE: 22, COPPER: 23, CERAMIC: 24,
   SOOT: 25, PAINTED: 26, MARBLE: 27, LOG: 28, PAINTING: 29, GILT: 30, ENAMEL: 31, CHROME: 32,
-  MIRROR: 33, LEAD: 34, TERRACOTTA: 35, PEWTER: 36, BULB: 37, PLAIN: 38, GLOBE: 39,
+  MIRROR: 33, LEAD: 34, TERRACOTTA: 35, PEWTER: 36, BULB: 37, PLAIN: 38, GLOBE: 39, MEADOW: 40,
 };
 
 function packColor(hex) {
@@ -49,8 +49,13 @@ function buildScene() {
     prims.push(p);
     return p;
   }
-  const box = (x0, y0, z0, x1, y1, z1, mat, o) =>
-    add(T.BOX, [(x0 + x1) / 2, (y0 + y1) / 2, (z0 + z1) / 2], [Math.abs(x1 - x0) / 2, Math.abs(y1 - y0) / 2, Math.abs(z1 - z0) / 2], mat, o);
+  const box = (x0, y0, z0, x1, y1, z1, mat, o) => {
+    const hx = Math.abs(x1 - x0) / 2, hy = Math.abs(y1 - y0) / 2, hz = Math.abs(z1 - z0) / 2;
+    const mh = Math.min(hx, hy, hz);
+    if ((mat === M.WOOD || mat === M.PAINTED || mat === M.ENAMEL) && mh > 0.008)
+      return add(T.RBOX, [(x0 + x1) / 2, (y0 + y1) / 2, (z0 + z1) / 2], [hx, hy, hz], mat, Object.assign({}, o, { r: Math.min(0.012, mh * 0.45) }));
+    return add(T.BOX, [(x0 + x1) / 2, (y0 + y1) / 2, (z0 + z1) / 2], [Math.abs(x1 - x0) / 2, Math.abs(y1 - y0) / 2, Math.abs(z1 - z0) / 2], mat, o);
+  };
   const cbox = (cx, cy, cz, hx, hy, hz, mat, o) => add(T.BOX, [cx, cy, cz], [hx, hy, hz], mat, o);
   const rbox = (cx, cy, cz, hx, hy, hz, r, mat, o = {}) => add(T.RBOX, [cx, cy, cz], [hx, hy, hz], mat, Object.assign({}, o, { r }));
   const cyl = (cx, cy, cz, r, hh, mat, o) => add(T.CYL, [cx, cy, cz], [r, hh, r], mat, o);
@@ -82,29 +87,27 @@ function buildScene() {
   }
 
   // ---------------------------------------------------------------- walls
+  // Walls with rectangular openings (openings may be stacked vertically in the same column).
+  function wallSegments(a0, a1, y0, y1, openings, emit) {
+    const xs = new Set([a0, a1]);
+    for (const o of openings) { xs.add(Math.max(a0, Math.min(a1, o.a))); xs.add(Math.max(a0, Math.min(a1, o.b))); }
+    const bps = [...xs].sort((p, q) => p - q);
+    for (let k = 0; k < bps.length - 1; k++) {
+      const xa = bps[k], xb = bps[k + 1];
+      if (xb - xa < 1e-6) continue;
+      const cov = openings.filter(o => o.a <= xa + 1e-6 && o.b >= xb - 1e-6).sort((p, q) => p.y0 - q.y0);
+      let y = y0;
+      for (const o of cov) { if (o.y0 > y) emit(xa, xb, y, o.y0); y = Math.max(y, o.y1); }
+      if (y < y1) emit(xa, xb, y, y1);
+    }
+  }
   // wall perpendicular to z (runs along x)
   function wallAlongX(x0, x1, y0, y1, z0, z1, mat, openings = []) {
-    openings = openings.slice().sort((a, b) => a.a - b.a);
-    let cur = x0;
-    for (const o of openings) {
-      if (o.a > cur) box(cur, y0, z0, o.a, y1, z1, mat);
-      if (o.y0 > y0) box(o.a, y0, z0, o.b, o.y0, z1, mat);
-      if (o.y1 < y1) box(o.a, o.y1, z0, o.b, y1, z1, mat);
-      cur = o.b;
-    }
-    if (cur < x1) box(cur, y0, z0, x1, y1, z1, mat);
+    wallSegments(x0, x1, y0, y1, openings, (a, b, ya, yb) => box(a, ya, z0, b, yb, z1, mat));
   }
   // wall perpendicular to x (runs along z)
   function wallAlongZ(z0, z1, y0, y1, x0, x1, mat, openings = []) {
-    openings = openings.slice().sort((a, b) => a.a - b.a);
-    let cur = z0;
-    for (const o of openings) {
-      if (o.a > cur) box(x0, y0, cur, x1, y1, o.a, mat);
-      if (o.y0 > y0) box(x0, y0, o.a, x1, o.y0, o.b, mat);
-      if (o.y1 < y1) box(x0, o.y1, o.a, x1, y1, o.b, mat);
-      cur = o.b;
-    }
-    if (cur < z1) box(x0, y0, cur, x1, y1, z1, mat);
+    wallSegments(z0, z1, y0, y1, openings, (a, b, ya, yb) => box(x0, ya, a, x1, yb, b, mat));
   }
 
   // A window set into a wall. axis 'z': wall spans z in [zin, zout] (zout outside), window centred at x=c.
@@ -116,8 +119,10 @@ function buildScene() {
     const mull = opt.mullion !== false;
     const transoms = opt.transoms || [];
     // portal at the inner face of the opening, normal pointing into the room
-    if (axis === 'z') portals.push({ c: [c, (y0 + y1) / 2, inner], u: [w / 2, 0, 0], v: [0, (y1 - y0) / 2, 0], n: [0, 0, -dir] });
-    else portals.push({ c: [inner, (y0 + y1) / 2, c], u: [0, 0, w / 2], v: [0, (y1 - y0) / 2, 0], n: [-dir, 0, 0] });
+    // (placed at the glass plane so the window reveals are lit through the portal too)
+    if (opt.upper) {}
+    else if (axis === 'z') portals.push({ c: [c, (y0 + y1) / 2, glassPos - dir * 0.007], u: [w / 2, 0, 0], v: [0, (y1 - y0) / 2, 0], n: [0, 0, -dir] });
+    else portals.push({ c: [glassPos - dir * 0.007, (y0 + y1) / 2, c], u: [0, 0, w / 2], v: [0, (y1 - y0) / 2, 0], n: [-dir, 0, 0] });
     const place = (a0, a1, yy0, yy1, d0, d1, mat, o) => {
       if (axis === 'z') box(a0, yy0, Math.min(d0, d1), a1, yy1, Math.max(d0, d1), mat, o);
       else box(Math.min(d0, d1), yy0, a0, Math.max(d0, d1), yy1, a1, mat, o);
@@ -134,7 +139,7 @@ function buildScene() {
     place(c - w / 2 - 0.34, c + w / 2 + 0.34, y1 + 0.26, y1 + 0.38, outer, outer + dir * 0.14, M.STONE_TRIM);
     place(c - w / 2 - 0.12, c + w / 2 + 0.12, y0 - 0.12, y0, outer - dir * 0.3, outer + dir * 0.1, M.STONE_TRIM);
     // interior oak sill board
-    place(c - w / 2 - 0.05, c + w / 2 + 0.05, y0 - 0.05, y0 + 0.0, inner - dir * 0.04, glassPos, M.WOOD, { col: '#6b4a2e' });
+    if (!opt.upper) place(c - w / 2 - 0.05, c + w / 2 + 0.05, y0 - 0.05, y0 + 0.0, inner - dir * 0.04, glassPos, M.WOOD, { col: '#6b4a2e' });
   }
 
   // ---------------------------------------------------------------- constants
@@ -158,7 +163,10 @@ function buildScene() {
   const north = [];
   for (const x of GHwin) north.push({ a: x - 0.8, b: x + 0.8, y0: 1.4, y1: 6.6 });
   for (const x of libWin) north.push({ a: x - 0.7, b: x + 0.7, y0: 1.0, y1: 4.0 });
+  const upN = [7.2, 11.8];
+  for (const x of upN) north.push({ a: x - 0.6, b: x + 0.6, y0: 6.6, y1: 8.8 });
   wallAlongX(-16, 16, -0.5, YT, -11, -10, M.STONE, north);
+  for (const x of upN) windowUnit('z', -10, -11, x, 1.2, 6.6, 8.8, { upper: true, transoms: [7.9] });
   for (const x of GHwin) windowUnit('z', -10, -11, x, 1.6, 1.4, 6.6, { transoms: [3.2, 5.0] });
   for (const x of libWin) windowUnit('z', -10, -11, x, 1.4, 1.0, 4.0, { transoms: [3.0] });
 
@@ -167,7 +175,10 @@ function buildScene() {
   const south = [{ a: 0.5, b: 2.5, y0: 0.05, y1: 3.3 }, { a: -1.3, b: -0.7, y0: 1.2, y1: 3.4 }, { a: 3.7, b: 4.3, y0: 1.2, y1: 3.4 }];
   for (const x of kitWin) south.push({ a: x - 0.7, b: x + 0.7, y0: 1.1, y1: 3.4 });
   for (const x of bedWin) south.push({ a: x - 0.7, b: x + 0.7, y0: 0.9, y1: 3.4 });
+  const upS = [-12.0, -7.0, 1.5, 8.6, 12.6];
+  for (const x of upS) south.push({ a: x - 0.6, b: x + 0.6, y0: 6.6, y1: 8.8 });
   wallAlongX(-16, 16, -0.5, YT, 10, 11, M.STONE, south);
+  for (const x of upS) windowUnit('z', 10, 11, x, 1.2, 6.6, 8.8, { upper: true, transoms: [7.9] });
   for (const x of kitWin) windowUnit('z', 10, 11, x, 1.4, 1.1, 3.4, {});
   for (const x of bedWin) windowUnit('z', 10, 11, x, 1.4, 0.9, 3.4, { transoms: [2.6] });
   windowUnit('z', 10, 11, -1.0, 0.6, 1.2, 3.4, { mullion: false });
@@ -178,12 +189,34 @@ function buildScene() {
   box(0.28, 3.3, 11.0, 2.72, 3.75, 11.1, M.STONE_TRIM);
   box(0.1, 3.75, 11.0, 2.9, 3.88, 11.2, M.STONE_TRIM);
 
-  const west = [];
+  const west = [{ a: 7.6, b: 8.8, y0: 6.6, y1: 8.8 }];
   wallAlongZ(-10, 10, -0.5, YT, -16, -15, M.STONE, west);
-  const east = [{ a: -5.85, b: -4.45, y0: 1.0, y1: 4.0 }, { a: 7.6, b: 9.0, y0: 0.9, y1: 3.4 }];
+  windowUnit('x', -15, -16, 8.2, 1.2, 6.6, 8.8, { upper: true, transoms: [7.9] });
+  const east = [{ a: -5.85, b: -4.45, y0: 1.0, y1: 4.0 }, { a: 7.6, b: 9.0, y0: 0.9, y1: 3.4 }, { a: -5.75, b: -4.55, y0: 6.6, y1: 8.8 }, { a: 3.9, b: 5.1, y0: 6.6, y1: 8.8 }];
   wallAlongZ(-10, 10, -0.5, YT, 15, 16, M.STONE, east);
+  windowUnit('x', 15, 16, -5.15, 1.2, 6.6, 8.8, { upper: true, transoms: [7.9] });
+  windowUnit('x', 15, 16, 4.5, 1.2, 6.6, 8.8, { upper: true, transoms: [7.9] });
   windowUnit('x', 15, 16, -5.15, 1.4, 1.0, 4.0, { transoms: [3.0] });
   windowUnit('x', 15, 16, 8.3, 1.4, 0.9, 3.4, { transoms: [2.6] });
+
+  // heavy linen / wool drapes either side of the tall windows, hung from iron poles
+  function drapes(axis, inner, dirIn, c, w, yTop, col) {
+    const h = yTop;
+    for (const sgn of [-1, 1]) {
+      const a = c + sgn * (w / 2 + 0.2);
+      if (axis === 'z') rbox(a, h / 2 + 0.01, inner + dirIn * 0.1, 0.3, h / 2, 0.045, 0.035, M.LINEN, { col, x: 2 });
+      else rbox(inner + dirIn * 0.1, h / 2 + 0.01, a, 0.3, h / 2, 0.045, 0.035, M.LINEN, { col, x: 2, rot: [0, 90, 0] });
+    }
+    const p0 = axis === 'z' ? [c - w / 2 - 0.6, yTop + 0.06, inner + dirIn * 0.14] : [inner + dirIn * 0.14, yTop + 0.06, c - w / 2 - 0.6];
+    const p1 = axis === 'z' ? [c + w / 2 + 0.6, yTop + 0.06, inner + dirIn * 0.14] : [inner + dirIn * 0.14, yTop + 0.06, c + w / 2 + 0.6];
+    rod(p0, p1, 0.018, M.IRON);
+    ell(p0[0], p0[1], p0[2], 0.035, 0.035, 0.035, M.IRON); ell(p1[0], p1[1], p1[2], 0.035, 0.035, 0.035, M.IRON);
+  }
+  for (const x of GHwin) drapes('z', -10, 1, x, 1.6, 7.0, '#56604a');
+  for (const x of libWin) drapes('z', -10, 1, x, 1.4, 4.35, '#7b5836');
+  drapes('x', 15, -1, -5.15, 1.4, 4.35, '#7b5836');
+  for (const x of bedWin) drapes('z', 10, -1, x, 1.4, 3.75, '#cdc2ac');
+  drapes('x', 15, -1, 8.3, 1.4, 3.75, '#cdc2ac');
 
   // ---------------------------------------------------------------- internal walls
   // A: z = 0 (north rooms | south rooms)
@@ -301,19 +334,32 @@ function buildScene() {
   // ---------------------------------------------------------------- towers
   for (const sx of [-1, 1]) for (const sz of [-1, 1]) {
     const cx = 17 * sx, cz = 12 * sz;
-    post(cx, -0.5, cz, 2.8, 15.0, M.STONE);
-    post(cx, -0.5, cz, 3.0, 0.8, M.STONE_TRIM);
-    post(cx, 13.9, cz, 3.02, 0.45, M.STONE_TRIM);   // corbel course
-    cone(cx, 14.35 + 3.4, cz, 3.25, 3.4, 0.06, M.SLATE);
-    post(cx, 21.1, cz, 0.05, 1.3, M.LEAD);
-    ell(cx, 22.2, cz, 0.12, 0.12, 0.12, M.LEAD);
+    const R = sz > 0 ? 3.15 : 2.75, Ht = (sz > 0 ? 16.2 : 14.6) + (sx > 0 ? 0.6 : 0), rh = sz > 0 ? 4.2 : 3.4;
+    post(cx, -0.5, cz, R, Ht + 0.5, M.STONE);
+    post(cx, -0.5, cz, R + 0.2, 0.8, M.STONE_TRIM);
+    post(cx, 5.6, cz, R + 0.06, 0.18, M.STONE_TRIM);
+    post(cx, Ht - 1.1, cz, R + 0.22, 0.45, M.STONE_TRIM);   // corbel course
+    for (let k = 0; k < 18; k++) {                                  // machicolation corbels
+      const a = k / 18 * Math.PI * 2;
+      add(T.BOX, [cx + Math.cos(a) * (R + 0.1), Ht - 1.45, cz + Math.sin(a) * (R + 0.1)], [0.14, 0.2, 0.18], M.STONE_TRIM, { rot: [0, -a * 180 / Math.PI, 0] });
+    }
+    cone(cx, Ht - 0.65 + rh, cz, R + 0.45, rh, 0.06, M.SLATE);
+    post(cx, Ht - 0.65 + 2 * rh - 0.2, cz, 0.05, 1.3, M.LEAD);
+    ell(cx, Ht - 0.65 + 2 * rh + 1.1, cz, 0.12, 0.12, 0.12, M.LEAD);
+    // dormer-like lucarne on the roof
+    push([cx, 0, cz], Math.atan2(sx, sz) * 180 / Math.PI + 180);
+    box(-0.35, Ht - 0.4, R - 0.3, 0.35, Ht + 0.9, R + 0.2, M.STONE_TRIM);
+    box(-0.22, Ht - 0.25, R + 0.15, 0.22, Ht + 0.6, R + 0.23, M.GLASS, { flags: F.TRANS });
+    beam([-0.45, Ht + 0.85, R + 0.3], [0, Ht + 1.35, R + 0.3], 0.5, 0.06, M.SLATE, [0, 0, 1]);
+    beam([0.45, Ht + 0.85, R + 0.3], [0, Ht + 1.35, R + 0.3], 0.5, 0.06, M.SLATE, [0, 0, 1]);
+    pop();
     // tower windows (dark recess framed in dressed stone), facing outward diagonally
     const yaw = Math.atan2(sx, sz) * 180 / Math.PI;
     for (const [wy, hh] of [[4.2, 0.9], [9.2, 0.7]]) {
       push([cx, 0, cz], yaw);
-      box(-0.45, wy - hh - 0.1, 2.6, 0.45, wy + hh + 0.25, 2.88, M.STONE_TRIM);
-      box(-0.3, wy - hh, 2.84, 0.3, wy + hh, 2.9, M.GLASS, { flags: F.TRANS });
-      box(-0.05, wy - hh, 2.84, 0.05, wy + hh, 2.93, M.STONE_TRIM);
+      box(-0.45, wy - hh - 0.1, R - 0.2, 0.45, wy + hh + 0.25, R + 0.08, M.STONE_TRIM);
+      box(-0.3, wy - hh, R + 0.04, 0.3, wy + hh, R + 0.1, M.GLASS, { flags: F.TRANS });
+      box(-0.05, wy - hh, R + 0.04, 0.05, wy + hh, R + 0.13, M.STONE_TRIM);
       pop();
     }
   }
@@ -339,6 +385,14 @@ function buildScene() {
     box(15.6, 11.7, z - 0.45, 16.15, 12.5, z + 0.45, M.STONE);
     box(-16.18, 12.5, z - 0.47, -15.57, 12.6, z + 0.47, M.STONE_TRIM);
     box(15.57, 12.5, z - 0.47, 16.18, 12.6, z + 0.47, M.STONE_TRIM);
+  }
+  for (let x = -14.6; x <= 14.7; x += 0.9) {
+    box(x - 0.12, 9.55, -11.3, x + 0.12, 10.1, -11.0, M.STONE_TRIM, { seed: x });
+    box(x - 0.12, 9.55, 11.0, x + 0.12, 10.1, 11.3, M.STONE_TRIM, { seed: x + 50 });
+  }
+  for (let z = -9.9; z <= 10.0; z += 0.9) {
+    box(-16.3, 9.55, z - 0.12, -16.0, 10.1, z + 0.12, M.STONE_TRIM, { seed: z });
+    box(16.0, 9.55, z - 0.12, 16.3, 10.1, z + 0.12, M.STONE_TRIM, { seed: z + 80 });
   }
   // string course at first floor level
   box(-16.12, 5.6, -11.12, 16.12, 5.78, -10.95, M.STONE_TRIM);
@@ -401,26 +455,32 @@ function buildScene() {
   function clubChair(x, z, yaw, col) {
     push([x, 0, z], yaw);
     const o = { col };
-    rbox(0, 0.25, -0.02, 0.44, 0.19, 0.42, 0.07, M.LEATHER, o);        // base
-    rbox(0, 0.49, 0.06, 0.31, 0.075, 0.34, 0.06, M.LEATHER, o);        // seat cushion
-    rbox(0, 0.62, -0.36, 0.43, 0.3, 0.12, 0.09, M.LEATHER, o);         // back
-    rbox(-0.34, 0.55, 0.0, 0.11, 0.18, 0.42, 0.08, M.LEATHER, o);      // arms
-    rbox(0.34, 0.55, 0.0, 0.11, 0.18, 0.42, 0.08, M.LEATHER, o);
-    for (const sx of [-1, 1]) for (const sz of [-1, 1]) post(sx * 0.36, 0, sz * 0.34 - 0.02, 0.028, 0.07, M.WOOD, { col: '#3a2416' });
+    rbox(0, 0.21, 0.0, 0.44, 0.16, 0.44, 0.1, M.LEATHER, o);                        // base
+    rbox(0, 0.43, 0.08, 0.27, 0.075, 0.33, 0.07, M.LEATHER, { col, rot: [-3, 0, 0] }); // seat cushion
+    rbox(0, 0.56, -0.32, 0.36, 0.25, 0.11, 0.1, M.LEATHER, { col, rot: [-10, 0, 0] }); // reclined back
+    add(T.CYL, [0, 0.8, -0.37], [0.1, 0.38, 0.1], M.LEATHER, { col, rot: [0, 0, 90] }); // back roll
+    for (const sx of [-1, 1]) {
+      rbox(sx * 0.35, 0.44, 0.02, 0.1, 0.19, 0.42, 0.09, M.LEATHER, o);            // arm
+      add(T.CYL, [sx * 0.37, 0.63, 0.04], [0.105, 0.4, 0.105], M.LEATHER, { col, rot: [90, 0, 0] }); // rolled arm
+    }
+    for (const sx of [-1, 1]) for (const sz of [-1, 1]) ell(sx * 0.37, 0.03, sz * 0.36, 0.04, 0.035, 0.04, M.WOOD, { col: '#2e1c10' });
     pop();
   }
   function chesterfield(x, z, yaw, len, col) {
     push([x, 0, z], yaw);
     const o = { col };
     const hl = len / 2;
-    rbox(0, 0.23, 0, hl - 0.02, 0.18, 0.44, 0.06, M.LEATHER, o);
-    rbox(0, 0.53, -0.36, hl, 0.25, 0.12, 0.08, M.LEATHER, { col, x: 1 });
-    rbox(-hl + 0.12, 0.5, 0.0, 0.14, 0.23, 0.46, 0.09, M.LEATHER, { col, x: 1 });
-    rbox(hl - 0.12, 0.5, 0.0, 0.14, 0.23, 0.46, 0.09, M.LEATHER, { col, x: 1 });
+    rbox(0, 0.22, 0, hl - 0.02, 0.17, 0.44, 0.06, M.LEATHER, o);
+    rbox(0, 0.47, -0.36, hl - 0.02, 0.25, 0.12, 0.08, M.LEATHER, { col, x: 1 });
+    add(T.CYL, [0, 0.72, -0.37], [0.11, hl - 0.02, 0.11], M.LEATHER, { col, rot: [0, 0, 90] });
+    for (const sx of [-1, 1]) {
+      rbox(sx * (hl - 0.13), 0.44, 0.0, 0.13, 0.25, 0.46, 0.08, M.LEATHER, { col, x: 1 });
+      add(T.CYL, [sx * (hl - 0.12), 0.71, 0.01], [0.14, 0.46, 0.14], M.LEATHER, { col, rot: [90, 0, 0] });
+    }
     const inner = hl - 0.26, n = len > 2 ? 3 : 2;
     for (let i = 0; i < n; i++) {
       const cxx = -inner + (2 * inner) * (i + 0.5) / n;
-      rbox(cxx, 0.465, 0.07, inner / n - 0.01, 0.07, 0.33, 0.05, M.LEATHER, o);
+      rbox(cxx, 0.455, 0.07, inner / n - 0.01, 0.075, 0.33, 0.06, M.LEATHER, o);
     }
     for (const sx of [-1, 1]) for (const sz of [-1, 1]) ell(sx * (hl - 0.1), 0.035, sz * 0.36, 0.045, 0.04, 0.045, M.WOOD, { col: '#3a2416' });
     pop();
@@ -531,6 +591,11 @@ function buildScene() {
   candlestick(-13.85, 2.66, -7.3, 0.28); candlestick(-13.85, 2.66, -3.0, 0.28);
   post(-13.86, 2.66, -5.9, 0.07, 0.22, M.PEWTER); post(-13.86, 2.66, -4.35, 0.06, 0.18, M.CERAMIC, { col: '#d8d2c4' });
   painting(-14.0, 4.55, -5.15, 2.3, 1.55, 90, 0);
+  // bracket clock on the mantel
+  box(-13.95, 2.66, -5.45, -13.75, 3.0, -5.15, M.WOOD, { col: '#3a1f10' });
+  add(T.CYL, [-13.745, 2.86, -5.3], [0.09, 0.004, 0.09], M.CERAMIC, { rot: [0, 0, 90], col: '#e6dfcc' });
+  add(T.CYL, [-13.742, 2.86, -5.3], [0.1, 0.003, 0.1], M.BRASS, { rot: [0, 0, 90] });
+  ell(-13.85, 3.03, -5.3, 0.06, 0.04, 0.06, M.BRASS);
   // log basket + fire tools
   box(-14.6, 0.0, -2.35, -13.9, 0.42, -1.45, M.WOOD, { col: '#4b3521' });
   for (let i = 0; i < 5; i++) add(T.CYL, [-14.25, 0.47 + (i % 2) * 0.06, -2.2 + i * 0.17], [0.07, 0.32, 0.07], M.LOG, { rot: [0, 0, 90] });
@@ -586,7 +651,7 @@ function buildScene() {
 
   // chandelier over table
   {
-    const cx = -4.65, cy = 5.35, cz = TZ, R = 0.75;
+    const cx = -4.65, cy = 3.85, cz = TZ, R = 0.8;
     for (let i = 0; i < 16; i++) {
       const a0 = i / 16 * Math.PI * 2, a1 = (i + 1) / 16 * Math.PI * 2;
       rod([cx + Math.cos(a0) * R, cy, cz + Math.sin(a0) * R], [cx + Math.cos(a1) * R, cy, cz + Math.sin(a1) * R], 0.022, M.IRON);
@@ -620,7 +685,12 @@ function buildScene() {
   tableLamp(-2.9, 0.96, -0.58, 0.06);
   post(-4.65, 0.96, -0.55, 0.18, 0.012, M.PEWTER);
   painting(-4.65, 2.75, -0.3, 2.6, 1.7, 180, 0);
-  painting(-11.8, 2.4, -0.3, 1.0, 1.3, 180, 2);
+  painting(-12.9, 3.0, -0.3, 3.4, 2.5, 180, 4);
+  rod([-14.8, 4.35, -0.38], [-11.0, 4.35, -0.38], 0.02, M.IRON);
+  push([3.7, 0, -6.0], -90);
+  cbox(0, 4.0, 0.02, 1.5, 1.1, 0.012, M.PAINTING, { x: 4, seed: 33 });
+  pop();
+  rod([3.62, 5.15, -7.6], [3.62, 5.15, -4.4], 0.02, M.IRON);
   painting(-9.1, 2.4, -10.0, 0.9, 1.2, 0, 2);
   sconce(-8.7, 2.6, -0.3, 180); sconce(-0.7, 2.6, -0.3, 180);
   sconce(-10.0, 3.3, -10.0, 0); sconce(-5.6, 3.3, -10.0, 0);
@@ -778,8 +848,22 @@ function buildScene() {
     rod([x, 1.95, 5.2], [x, 4.2, 5.2], 0.006, M.IRON);
     add(T.CONE, [x, 1.86, 5.2], [0.22, 0.09, 0.05], M.ENAMEL, { r: 1, col: '#2f4a3c' });
     ell(x, 1.8, 5.2, 0.04, 0.05, 0.04, M.BULB, { flags: F.CAMONLY, collide: false });
-    light([x, 1.8, 5.2], 0.03, 0.08, 'lamp');
+    light([x, 1.8, 5.2], 0.03, 0.12, 'lamp');
   }
+  // dried herbs and garlic hanging from the pot rack
+  for (let i = 0; i < 9; i++) {
+    const x = -10.75 + i * 0.4, z = 5.02 + (i % 2) * 0.36;
+    rod([x, 2.55, z], [x, 2.38, z], 0.004, M.PLAIN, { col: '#8a7a5a', x: 0.9 });
+    ell(x, 2.28, z, 0.05, 0.12, 0.05, M.PLAIN, { col: i % 3 === 0 ? '#9c8d6a' : '#5d6a3e', x: 0.95 });
+  }
+  // butcher block + baskets
+  box(-13.5, 0.0, 7.6, -12.7, 0.82, 8.4, M.WOOD, { col: '#8a6a45' });
+  box(-13.55, 0.82, 7.55, -12.65, 0.92, 8.45, M.WOOD, { col: '#a9865a', x: 0.6 });
+  for (const [bx, bz] of [[-5.2, 9.5], [-4.75, 9.55]]) { post(bx, 0, bz, 0.22, 0.32, M.PLAIN, { col: '#8d6d45', x: 0.95 }); }
+  // brass lamp inside the inglenook
+  post(-14.95, 1.5, 3.95, 0.05, 0.02, M.BRASS);
+  ell(-14.88, 1.62, 3.95, 0.05, 0.08, 0.05, M.BULB, { flags: F.CAMONLY, collide: false });
+  light([-14.85, 1.62, 3.95], 0.04, 0.03, 'lamp');
   // base cabinets + worktop along south wall with belfast sink
   box(-14.9, 0.0, 9.35, -8.4, 0.1, 10.0, M.PAINTED, { col: '#2f3530' });
   box(-14.9, 0.1, 9.4, -8.4, 0.88, 10.0, M.PAINTED, { col: '#7d8a72' });
@@ -845,7 +929,9 @@ function buildScene() {
   // open front door, against west reveal
   box(0.52, 0.06, 8.02, 0.62, 3.28, 9.98, M.BOARDS, { col: '#4f3522', x: 1 });
   for (const y of [0.5, 2.8]) box(0.62, y, 8.2, 0.64, y + 0.08, 9.9, M.IRON);
-  add(T.CYL, [0.7, 1.2, 8.35], [0.07, 0.008, 0.07], M.IRON, { rot: [0, 0, 90] });
+  box(0.62, 1.05, 8.28, 0.64, 1.3, 8.4, M.IRON);
+  add(T.CYL, [0.655, 1.1, 8.34], [0.012, 0.03, 0.012], M.IRON, { rot: [0, 0, 90] });
+  rod([0.68, 1.1, 8.34], [0.68, 0.98, 8.34], 0.01, M.IRON);
   rug(0.65, 1.4, 2.35, 9.2, 3);
   // console + mirror on east wall
   push([5.7, 0, 2.6], -90);
@@ -927,7 +1013,11 @@ function buildScene() {
     }
     rbox(13.08, 0.8, bzc, 0.28, 0.035, 1.08, 0.03, M.WOOL, { col: '#5b6b4e' });       // throw across foot
     rbox(12.83, 0.55, bzc, 0.03, 0.25, 1.08, 0.025, M.WOOL, { col: '#5b6b4e' });
-    for (const px of [bx0 + 0.06, bx1 - 0.06]) for (const pz of [bz0 + 0.12, bz1 - 0.12]) ell(px, 1.35, pz, 0.13, 0.95, 0.1, M.LINEN, { col: '#d8cfbf' });
+    for (const pz of [bz0 + 0.3, bz1 - 0.3]) rbox(bx1 - 0.14, 1.2, pz, 0.28, 1.05, 0.05, 0.04, M.LINEN, { col: '#d9d0bf', x: 2, rot: [0, 90, 0] });
+    for (const pz of [bz0 + 0.1, bz1 - 0.1]) ell(bx0 + 0.07, 1.25, pz, 0.13, 1.05, 0.12, M.LINEN, { col: '#d9d0bf' });
+    rbox((bx0 + bx1) / 2, 2.2, bz0 - 0.02, (bx1 - bx0) / 2 + 0.03, 0.12, 0.02, 0.015, M.LINEN, { col: '#d9d0bf', x: 2 });
+    rbox((bx0 + bx1) / 2, 2.2, bz1 + 0.02, (bx1 - bx0) / 2 + 0.03, 0.12, 0.02, 0.015, M.LINEN, { col: '#d9d0bf', x: 2 });
+    rbox(bx0 - 0.02, 2.2, (bz0 + bz1) / 2, (bz1 - bz0) / 2 + 0.03, 0.12, 0.02, 0.015, M.LINEN, { col: '#d9d0bf', x: 2, rot: [0, 90, 0] });
     // bench at foot
     box(12.05, 0.0, 3.95, 12.45, 0.4, 5.25, M.WOOD, { col: '#3a2412' });
     rbox(12.25, 0.45, 4.6, 0.21, 0.06, 0.66, 0.05, M.LEATHER, { col: '#6a3a1c', x: 1 });
@@ -985,6 +1075,29 @@ function buildScene() {
   post(7.8, 0, 1.5, 0.2, 0.62, M.WOOD, { col: '#4a2a14' });
   post(7.8, 0.62, 1.5, 0.24, 0.02, M.WOOD, { col: '#3b1d0c' });
   post(7.75, 0.64, 1.45, 0.05, 0.1, M.CERAMIC, { col: '#f0ece2' });
+  // linen sofa + ottoman facing the bedroom fire
+  push([10.65, 0, 3.05], 180);
+  rbox(0, 0.22, 0, 0.98, 0.16, 0.44, 0.07, M.LINEN, { col: '#cfc6b2' });
+  rbox(0, 0.62, -0.34, 0.96, 0.28, 0.12, 0.1, M.LINEN, { col: '#cfc6b2', rot: [-8, 0, 0] });
+  for (const sx of [-1, 1]) rbox(sx * 0.88, 0.5, 0.0, 0.12, 0.2, 0.44, 0.1, M.LINEN, { col: '#cfc6b2' });
+  for (const sx of [-1, 1]) rbox(sx * 0.38, 0.44, 0.07, 0.37, 0.08, 0.34, 0.07, M.LINEN, { col: '#d6cdb9' });
+  rbox(-0.5, 0.64, -0.2, 0.2, 0.17, 0.06, 0.06, M.WOOL, { col: '#6d7d86', x: 1, rot: [-15, 12, 0] });
+  rbox(0.55, 0.64, -0.2, 0.2, 0.17, 0.06, 0.06, M.LINEN, { col: '#8c6f55', rot: [-15, -10, 0] });
+  for (const sx of [-1, 1]) for (const sz of [-1, 1]) post(sx * 0.9, 0, sz * 0.36, 0.025, 0.07, M.WOOD, { col: '#3b1d0c' });
+  pop();
+  rbox(10.65, 0.22, 1.95, 0.45, 0.18, 0.3, 0.06, M.LEATHER, { col: '#5a3a24' });
+  box(10.35, 0.4, 1.8, 10.85, 0.44, 2.1, M.PLAIN, { col: '#2b3b30', x: 0.55 });
+  rug(9.2, 1.45, 12.1, 3.9, 3);
+  // writing desk under the east window
+  box(14.35, 0.72, 7.6, 14.95, 0.76, 9.0, M.WOOD, { col: '#4a2811' });
+  for (const z of [7.65, 8.95]) for (const x of [14.4, 14.9]) post(x, 0, z, 0.025, 0.72, M.WOOD, { col: '#3b1d0c' });
+  box(14.4, 0.6, 7.7, 14.93, 0.72, 8.9, M.WOOD, { col: '#55301a' });
+  woodChair(13.95, 8.3, 90, '#4f321d', '#b9ad96');
+  box(14.6, 0.76, 8.5, 14.85, 0.8, 8.8, M.PLAIN, { col: '#6b2a20', x: 0.5 });
+  post(14.7, 0.76, 7.85, 0.05, 0.14, M.CERAMIC, { col: '#e8e4da' });
+  // floor lamp by the armchair
+  post(7.9, 0, 2.9, 0.13, 0.03, M.BRASS); post(7.9, 0, 2.9, 0.014, 1.4, M.BRASS);
+  lampShadeLight(7.9, 1.5, 2.9, 0.06, 0.22, 0.28);
   painting(15.0, 2.0, 8.3 - 1.4, 0.7, 0.9, -90, 2);
   painting(9.2, 2.2, 10.0, 0.8, 0.6, 180, 1);
 
@@ -1032,6 +1145,27 @@ function buildScene() {
       ell(cx, hgt, cz, rr, rr * (0.75 + r() * 0.3), rr, M.HEDGE, { x: 1, flags: F.POROUS | F.TRANS });
     }
   }
+  // rolling hills and woodland belts in the middle distance
+  {
+    const r = mulberry32(4242);
+    for (let i = 0; i < 14; i++) {
+      const a = i / 14 * Math.PI * 2 + r() * 0.3, d = 330 + r() * 380;
+      const rx = 140 + r() * 180, ry = 18 + r() * 30, rz = 140 + r() * 180;
+      ell(Math.cos(a) * d, -0.5 - ry * 0.35, Math.sin(a) * d, rx, ry, rz, M.MEADOW, { rot: [0, r() * 180, 0], collide: false });
+    }
+    for (let i = 0; i < 70; i++) {
+      const a = r() * Math.PI * 2, d = 95 + r() * 150;
+      const x = Math.cos(a) * d, z = Math.sin(a) * d;
+      if (z > 8 && Math.abs(x - 1.5) < 30) continue;   // keep the drive vista open
+      const s2 = 3.5 + r() * 3;
+      const nb = 3 + Math.floor(r() * 4);
+      for (let b = 0; b < nb; b++) {
+        const bx = x + (r() - 0.5) * s2 * 3, bz = z + (r() - 0.5) * s2 * 3, rr = s2 * (0.7 + r() * 0.5);
+        ell(bx, -0.5 + rr * 0.8 + r() * s2 * 1.2, bz, rr, rr * (0.8 + r() * 0.3), rr, M.HEDGE, { x: 1, flags: F.POROUS | F.TRANS, collide: false });
+      }
+    }
+  }
+  tree(-26, -20, 1.2); tree(30, -26, 1.4); tree(-44, 24, 1.5); tree(46, 30, 1.3); tree(-52, -4, 1.6); tree(52, 6, 1.4);
   tree(-34, 10, 1.3); tree(-38, -12, 1.5); tree(36, 18, 1.4); tree(40, -6, 1.2); tree(-30, 42, 1.4); tree(34, 46, 1.6);
   tree(-22, -34, 1.3); tree(18, -38, 1.5);
 

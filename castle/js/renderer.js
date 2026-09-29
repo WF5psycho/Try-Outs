@@ -245,12 +245,18 @@ class Renderer {
       gl.uniform2f(this.u(p, 'uRes'), W, H);
       gl.uniform1f(this.u(p, 'uSigL'), opts.denoiseStrength);
       const passes = this.spp > 512 ? 3 : 5;
-      let inTex = A.tex[0];
+      // pass 0: demodulate + outlier rejection; then a-trous passes
+      this.bindTex(p, 'uIn', 0, A.tex[0]);
+      gl.uniform1i(this.u(p, 'uStep'), 1);
+      gl.uniform1i(this.u(p, 'uFirst'), 1);
+      gl.uniform1f(this.u(p, 'uPass'), 0);
+      this.draw(p, this.dn[1].fbo, W, H);
+      let inTex = this.dn[1].tex;
       for (let i = 0; i < passes; i++) {
         const out = this.dn[i % 2];
         this.bindTex(p, 'uIn', 0, inTex);
         gl.uniform1i(this.u(p, 'uStep'), 1 << i);
-        gl.uniform1i(this.u(p, 'uFirst'), i === 0 ? 1 : 0);
+        gl.uniform1i(this.u(p, 'uFirst'), 0);
         gl.uniform1f(this.u(p, 'uPass'), i);
         this.draw(p, out.fbo, W, H);
         inTex = out.tex;
@@ -290,6 +296,7 @@ class Renderer {
     this.exposure = exposure;
     gl.uniform1f(this.u(p, 'uExposure'), exposure);
     gl.uniform1f(this.u(p, 'uBloom'), opts.bloom);
+    gl.uniform1f(this.u(p, 'uLocal'), opts.local === undefined ? 1.0 : opts.local);
     gl.uniform2f(this.u(p, 'uOut'), this.canvas.width, this.canvas.height);
     gl.uniform1f(this.u(p, 'uLevels'), this.levels);
     gl.uniform1f(this.u(p, 'uGrain'), opts.grain || 0);
