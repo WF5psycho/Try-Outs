@@ -17,7 +17,7 @@ const DEFAULTS = {
   time: 16.2, sunRot: 330, season: 0.55,
   cloud: 0.3, cloudDrift: 0.0, rain: 0.0, haze: 0.12, dust: 0.2,
   warmth: 2700, lampI: 1.0, fireI: 1.0,
-  ev: 0.0, debug: 0, bounces: 3, resScale: 0.6, denoise: 1.0, fov: 68, bloom: 0.035, grain: 0.01, animate: 0,
+  ev: 0.0, debug: 0, bounces: 3, resScale: 0.5, denoise: 1.0, fov: 68, bloom: 0.035, grain: 0.01, animate: 0,
 };
 
 const SLIDERS = [
@@ -173,10 +173,12 @@ const App = {
   },
 
   resize() {
-    const dpr = this.shot ? 1 : Math.min(window.devicePixelRatio || 1, 1.5);
+    const dpr = this.shot ? 1 : Math.min(window.devicePixelRatio || 1, 1.0);
     const w = Math.floor(this.canvas.clientWidth * dpr), h = Math.floor(this.canvas.clientHeight * dpr);
     this.canvas.width = w; this.canvas.height = h;
-    this.renderer.resize(w * P.resScale, h * P.resScale);
+    // while the camera moves, trace a quarter of the pixels (half res each axis); full res once still
+    const s = P.resScale * (this.moving ? 0.5 : 1);
+    this.renderer.resize(w * s, h * s);
   },
 
   buildUI() {
@@ -269,11 +271,11 @@ const App = {
     const S = this.sky;
     return {
       sunDir: S.sunDir, sunE: S.sunE, sunEClear: S.sunEClear, sunCos: S.sunCos,
-      cloud: P.cloud, cloudOff: [P.cloudDrift * 0.7 + (P.animate ? t * 0.004 : 0), P.cloudDrift * 0.3], wet: P.rain, haze: P.haze, dust: P.dust,
+      cloud: P.cloud, cloudOff: [P.cloudDrift * 0.7 + (P.animate ? t * 0.004 : 0), P.cloudDrift * 0.3], wet: P.rain, haze: P.haze, dust: this.moving ? 0 : P.dust,
       time: P.animate ? t : 0.0,
       numLights: Ls.n, lightPos: Ls.pos, lightCol: Ls.col,
       fireCol: Ls.fire, lampCol: Ls.lamp, candleCol: Ls.candle, fireI: P.fireI, lampI: P.lampI,
-      bounces: this.moving ? Math.min(P.bounces, 2) : P.bounces, debug: P.debug,
+      bounces: this.moving ? 1 : P.bounces, debug: P.debug,
       numPortals: this.portalData.n, portals: this.portalData.data,
     };
   },
@@ -294,7 +296,7 @@ const App = {
     if (moved) { this.renderer.reset(); this.lastMove = now; }
     // lighter paths while the camera is moving keeps navigation fluid; full quality once still
     this.moving = now - (this.lastMove || 0) < 120;
-    if (this.wasMoving && !this.moving) this.renderer.reset();
+    if (this.wasMoving !== this.moving) { this.resize(); this.renderer.reset(); }
     this.wasMoving = this.moving;
     const maxSpp = 4096;
     if (this.renderer.spp < maxSpp || P.animate) this.renderOnce(now / 1000);
