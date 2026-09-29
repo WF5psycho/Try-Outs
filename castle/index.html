@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Castle · Path-Traced Walkthrough</title>
+<style>
+  :root { --bg: #0d0c0a; --panel: rgba(18, 16, 13, 0.78); --ink: #ece4d4; --muted: #a39a88; --accent: #c9a86a; --line: rgba(236, 228, 212, 0.14); }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--ink); font: 13px/1.35 Georgia, 'Times New Roman', serif; overflow: hidden; }
+  #view { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block; cursor: crosshair; touch-action: none; }
+  #panel { position: fixed; top: 12px; right: 12px; width: 300px; max-height: calc(100vh - 24px); overflow-y: auto; background: var(--panel); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; }
+  #panel h1 { font-size: 16px; font-weight: normal; letter-spacing: 0.06em; margin: 0 0 2px; color: var(--accent); }
+  #panel p { margin: 0 0 8px; color: var(--muted); font-size: 12px; }
+  fieldset { border: none; border-top: 1px solid var(--line); margin: 8px 0 0; padding: 8px 0 0; }
+  legend { color: var(--accent); font-size: 11px; text-transform: uppercase; letter-spacing: 0.12em; padding: 0 6px 0 0; }
+  .row { display: grid; grid-template-columns: 1fr auto; gap: 2px 8px; margin: 6px 0; }
+  .row span { color: var(--ink); }
+  .row output { color: var(--muted); font-variant-numeric: tabular-nums; }
+  .row input { grid-column: 1 / -1; width: 100%; accent-color: var(--accent); }
+  .btns { display: flex; flex-wrap: wrap; gap: 4px; margin: 6px 0; }
+  button { background: rgba(236, 228, 212, 0.08); color: var(--ink); border: 1px solid var(--line); border-radius: 6px; padding: 4px 8px; font: inherit; font-size: 12px; cursor: pointer; }
+  button:hover { background: rgba(201, 168, 106, 0.22); }
+  #status { position: fixed; left: 12px; bottom: 10px; color: var(--muted); font: 11px/1.2 ui-monospace, Menlo, Consolas, monospace; text-shadow: 0 1px 2px #000; }
+  #help { position: fixed; left: 12px; top: 12px; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 8px 12px; color: var(--muted); font-size: 12px; max-width: 320px; }
+  #help b { color: var(--ink); font-weight: normal; }
+  #error { display: none; position: fixed; inset: 20% 10% auto; background: #2a1210; color: #ffd9cf; padding: 16px; border-radius: 8px; white-space: pre-wrap; font: 12px monospace; max-height: 60vh; overflow: auto; }
+  #touchwalk { position: fixed; left: 12px; bottom: 34px; display: none; gap: 6px; }
+  #touchwalk button { width: 56px; height: 44px; font-size: 18px; }
+  @media (pointer: coarse) { #touchwalk { display: flex; } }
+  body.hideui #panel, body.hideui #help, body.hideui #status, body.hideui #touchwalk { display: none; }
+  @media (max-width: 640px) { #panel { width: calc(100vw - 24px); top: auto; bottom: 90px; max-height: 45vh; } #help { display: none; } }
+</style>
+</head>
+<body>
+<canvas id="view"></canvas>
+<div id="help">
+  <b>Click</b> to look around · <b>WASD</b> move · <b>Shift</b> run · <b>F</b> walk/fly · <b>E/Q</b> up/down (fly) · <b>1–9</b> viewpoints · <b>H</b> hide UI.
+  The image refines progressively when you stop moving.
+</div>
+<div id="panel">
+  <h1>Hartwell Castle</h1>
+  <p>Real-time path tracer · WebGL2 · no libraries</p>
+  <div class="btns"><button id="mode">Mode</button><button id="toggleUI">Hide UI (H)</button></div>
+  <fieldset><legend>Viewpoints</legend><div class="btns" id="rooms"></div></fieldset>
+  <fieldset><legend>Time presets</legend><div class="btns" id="times"></div></fieldset>
+  <fieldset><legend>Weather presets</legend><div class="btns" id="presets"></div></fieldset>
+  <div id="sliders"></div>
+</div>
+<div id="touchwalk"><button aria-label="forward">▲</button><button aria-label="back">▼</button></div>
+<div id="status"></div>
+<div id="error"></div>
+<script src="js/math.js"></script>
+<script src="js/scene.js"></script>
+<script src="js/bvh.js"></script>
+<script src="js/shaders.js"></script>
+<script src="js/renderer.js"></script>
+<script src="js/controls.js"></script>
+<script src="js/main.js"></script>
+</body>
+</html>
